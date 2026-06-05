@@ -123,6 +123,15 @@ class GomokuEngine(BaseEngine):
     async def is_available(self) -> bool:
         return os.path.exists(RAPFI_PATH)
 
+    async def get_best_move(self, position: str, depth: int = 15) -> str:
+        result = await self.analyze_position(position, depth, 1)
+        return result.best_move
+
+    async def shutdown(self) -> None:
+        if self._process and self._process.returncode is None:
+            self._process.terminate()
+            self._process = None
+
     async def analyze_position(self, position: str, depth: int = 15, num_variations: int = 1) -> PositionEvaluation:
         """Get best move for current position. position = FEN string."""
         async with self._lock:

@@ -68,6 +68,8 @@ frontend:
   memory: 128Mi
   cpuLimit: "1"
   memoryLimit: 512Mi
+  env:
+    BACKEND_HOST: "chess-backend-service"
 
 analysisChess:
   replicaCount: 1
