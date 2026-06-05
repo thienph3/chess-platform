@@ -18,6 +18,7 @@ ANALYSIS_URLS = {
     "chess": settings.ANALYSIS_CHESS_URL,
     "xiangqi": settings.ANALYSIS_XIANGQI_URL,
     "go": settings.ANALYSIS_GO_URL,
+    "gomoku": settings.ANALYSIS_GOMOKU_URL,
 }
 
 
@@ -101,5 +102,6 @@ async def get_initial_state(game_type: str) -> dict[str, Any]:
         "chess": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "turn": "white"},
         "xiangqi": {"fen": "rheakaehr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RHEAKAEHR w - - 0 1", "turn": "red"},
         "go": {"fen": "", "turn": "black"},
+        "gomoku": {"fen": "", "turn": "black"},
     }
     return {**defaults.get(game_type, {}), "game_over": False}

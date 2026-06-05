@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ANALYSIS_CHESS_URL: str = "http://analysis-chess:8001"
     ANALYSIS_XIANGQI_URL: str = "http://analysis-xiangqi:8002"
     ANALYSIS_GO_URL: str = "http://analysis-go:8003"
+    ANALYSIS_GOMOKU_URL: str = "http://analysis-gomoku:8004"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -13,6 +13,7 @@ class GameType(str, enum.Enum):
     chess = "chess"
     xiangqi = "xiangqi"
     go = "go"
+    gomoku = "gomoku"
 
 
 class TimeFormat(str, enum.Enum):

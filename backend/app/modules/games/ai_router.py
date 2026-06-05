@@ -33,6 +33,7 @@ ANALYSIS_URLS = {
     "chess": settings.ANALYSIS_CHESS_URL,
     "xiangqi": settings.ANALYSIS_XIANGQI_URL,
     "go": settings.ANALYSIS_GO_URL,
+    "gomoku": settings.ANALYSIS_GOMOKU_URL,
 }
 
 DIFFICULTY_DEPTH = {"easy": 3, "medium": 10, "hard": 18}
