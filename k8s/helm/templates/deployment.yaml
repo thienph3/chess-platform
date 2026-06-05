@@ -1,0 +1,64 @@
+{{- range $name, $svc := dict "backend" .Values.backend "frontend" .Values.frontend "analysisChess" .Values.analysisChess "analysisGomoku" .Values.analysisGomoku }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.serviceLabel }}-deployment
+  namespace: {{ $.Values.namespace }}
+spec:
+  replicas: {{ $svc.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: {{ $svc.serviceLabel }}
+  template:
+    metadata:
+      labels:
+        app: {{ $svc.serviceLabel }}
+    spec:
+      containers:
+      - name: {{ $svc.serviceLabel }}
+        image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+        ports:
+        - containerPort: {{ $svc.service.port | default 80 }}
+        resources:
+          requests:
+            cpu: {{ $svc.cpu | quote }}
+            memory: {{ $svc.memory | quote }}
+          limits:
+            cpu: {{ $svc.cpuLimit | quote }}
+            memory: {{ $svc.memoryLimit | quote }}
+        {{- if $svc.env }}
+        env:
+        {{- range $key, $val := $svc.env }}
+        - name: {{ $key }}
+          value: {{ $val | quote }}
+        {{- end }}
+        {{- end }}
+{{- if and $svc.hpa $svc.hpa.autoscaling }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $svc.serviceLabel }}-hpa
+  namespace: {{ $.Values.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $svc.serviceLabel }}-deployment
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+{{- end }}
+{{- end }}

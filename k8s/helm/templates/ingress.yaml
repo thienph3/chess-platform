@@ -1,0 +1,26 @@
+{{- range $name, $svc := dict "backend" .Values.backend "frontend" .Values.frontend }}
+{{- if $svc.ingress }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $svc.serviceLabel }}-ingress
+  namespace: {{ $.Values.namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ $svc.ingress.host }}
+    http:
+      paths:
+      - path: {{ $svc.ingress.path }}(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: {{ $svc.serviceLabel }}-service
+            port:
+              number: {{ $svc.service.port | default 80 }}
+{{- end }}
+{{- end }}

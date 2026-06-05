@@ -1,0 +1,79 @@
+namespace: chess-platform
+
+backend:
+  replicaCount: 2
+  serviceLabel: chess-backend
+  image:
+    repository: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/backend
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    host: ml.tech.vinamilk.com
+    path: /chess/api
+    pathType: Prefix
+  cpu: 200m
+  memory: 512Mi
+  cpuLimit: "4"
+  memoryLimit: 4Gi
+  hpa:
+    autoscaling: true
+    minReplicas: 2
+    maxReplicas: 5
+  env:
+    DEBUG: "false"
+    ANALYSIS_CHESS_URL: "http://chess-analysis-service.chess-platform.svc.cluster.local:8001"
+    ANALYSIS_XIANGQI_URL: "http://chess-xiangqi-service.chess-platform.svc.cluster.local:8002"
+    ANALYSIS_GO_URL: "http://chess-go-service.chess-platform.svc.cluster.local:8003"
+    ANALYSIS_GOMOKU_URL: "http://chess-gomoku-service.chess-platform.svc.cluster.local:8004"
+
+frontend:
+  replicaCount: 2
+  serviceLabel: chess-frontend
+  image:
+    repository: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/frontend
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    host: ml.tech.vinamilk.com
+    path: /chess
+    pathType: Prefix
+  cpu: 50m
+  memory: 128Mi
+  cpuLimit: "1"
+  memoryLimit: 512Mi
+
+analysisChess:
+  replicaCount: 1
+  serviceLabel: chess-analysis
+  image:
+    repository: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-chess
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8001
+  cpu: 500m
+  memory: 1Gi
+  cpuLimit: "4"
+  memoryLimit: 4Gi
+  env:
+    STOCKFISH_PATH: "/usr/games/stockfish"
+
+analysisGomoku:
+  replicaCount: 1
+  serviceLabel: chess-gomoku
+  image:
+    repository: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-gomoku
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8004
+  cpu: 200m
+  memory: 512Mi
+  cpuLimit: "2"
+  memoryLimit: 2Gi
+  env:
+    RAPFI_PATH: "/usr/local/bin/rapfi"

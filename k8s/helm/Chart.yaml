@@ -1,0 +1,5 @@
+apiVersion: v2
+name: chess-platform-chart
+description: A Helm chart for VCC Chess Platform
+version: 0.1.0
+appVersion: "1.0"

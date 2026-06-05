@@ -1,0 +1,16 @@
+{{- range $name, $svc := dict "backend" .Values.backend "frontend" .Values.frontend "analysisChess" .Values.analysisChess "analysisGomoku" .Values.analysisGomoku }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.serviceLabel }}-service
+  namespace: {{ $.Values.namespace }}
+spec:
+  selector:
+    app: {{ $svc.serviceLabel }}
+  ports:
+  - protocol: TCP
+    port: {{ $svc.service.port | default 80 }}
+    targetPort: {{ $svc.service.port | default 80 }}
+  type: {{ $svc.service.type | default "ClusterIP" }}
+{{- end }}

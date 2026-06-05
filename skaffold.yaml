@@ -1,0 +1,82 @@
+apiVersion: skaffold/v2beta29
+kind: Config
+metadata:
+  name: chess-platform
+
+deploy:
+  helm:
+    releases:
+    - name: chess-platform-release
+      chartPath: k8s/helm
+      namespace: chess-platform
+
+profiles:
+  - name: dev
+    build:
+      local:
+        useDockerCLI: true
+      artifacts:
+      - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/backend
+        context: ./backend
+        docker:
+          dockerfile: Dockerfile
+      - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/frontend
+        context: ./frontend
+        docker:
+          dockerfile: Dockerfile
+      - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-chess
+        context: ./analysis
+        docker:
+          dockerfile: chess/Dockerfile
+      - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-gomoku
+        context: ./analysis
+        docker:
+          dockerfile: gomoku/Dockerfile
+    deploy:
+      helm:
+        releases:
+        - name: chess-platform-dev
+          chartPath: k8s/helm
+          namespace: chess-platform
+          valuesFiles:
+          - k8s/helm/values-dev.yaml
+          setValues:
+            backend.image.tag: latest
+            frontend.image.tag: latest
+            analysisChess.image.tag: latest
+            analysisGomoku.image.tag: latest
+
+  - name: prod
+    build:
+      local:
+        useDockerCLI: true
+      artifacts:
+      - image: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/backend
+        context: ./backend
+        docker:
+          dockerfile: Dockerfile
+      - image: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/frontend
+        context: ./frontend
+        docker:
+          dockerfile: Dockerfile
+      - image: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-chess
+        context: ./analysis
+        docker:
+          dockerfile: chess/Dockerfile
+      - image: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-gomoku
+        context: ./analysis
+        docker:
+          dockerfile: gomoku/Dockerfile
+    deploy:
+      helm:
+        releases:
+        - name: chess-platform-prod
+          chartPath: k8s/helm
+          namespace: chess-platform
+          valuesFiles:
+          - k8s/helm/values-prod.yaml
+          setValues:
+            backend.image.tag: latest
+            frontend.image.tag: latest
+            analysisChess.image.tag: latest
+            analysisGomoku.image.tag: latest
