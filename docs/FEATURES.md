@@ -5,10 +5,10 @@
 | 1 | Auth | Login, register, forgot/reset password, JWT, roles (admin/member) | 🔴 | ✅ |
 | 2 | Members | CRUD, search, detail page, stats, avatar upload | 🔴 | ✅ |
 | 3 | Tournaments | Online/OTB mode, pairing (Swiss/Round Robin/Knockout), standings, bracket, calendar, scheduled rooms, OTB result input + PGN | 🔴 | ✅ |
-| 4 | Ratings | ELO calculation (12 slots: 3 game types × 4 time formats), leaderboard, history chart | 🔴 | ✅ |
+| 4 | Ratings | ELO calculation (16 slots: 4 game types × 4 time formats), leaderboard, history chart | 🔴 | ✅ |
 | 5 | Finance | Thu/chi CRUD, balance tổng + per tournament, report theo tháng/quý, biểu đồ | 🔴 | ✅ |
-| 6 | Online Play | WebSocket real-time, 3 boards (Chess/Xiangqi/Go), spectator, replay, PGN export, scheduled start + countdown | 🔴 | ✅ |
-| 7 | Analysis Services | 3 engines (Stockfish/Pikafish/KataGo) — validate moves, analyze, export PGN | 🔴 | ✅ |
+| 6 | Online Play | WebSocket real-time, 4 boards (Chess/Xiangqi/Go/Gomoku), spectator, replay, PGN export, scheduled start + countdown | 🔴 | ✅ |
+| 7 | Analysis Services | 4 engines (Stockfish/Pikafish/KataGo/Rapfi) — validate moves, analyze, export PGN | 🔴 | ✅ |
 | 8 | Play vs AI | Chơi với máy, chọn màu/difficulty/thể thức, lưu history, SAN notation | � | ✅ |
 | 9 | Matchmaking | Tìm đối thủ tự động theo rating, thách đấu trực tiếp | 🟡 | ✅ |
 | 10 | Dashboard | Stats tổng quan, activity feed | 🟡 | ✅ |

@@ -64,6 +64,7 @@ inclusion: always
   - Chess = Cờ vua
   - Xiangqi = Cờ tướng
   - Go = Cờ vây
+  - Gomoku = Cờ caro
 
 ## Game Page Layout (theo chess.com style)
 
