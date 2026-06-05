@@ -19,12 +19,19 @@ backend:
   memoryLimit: 2Gi
   env:
     DEBUG: "true"
-    DATABASE_URL: "postgresql+asyncpg://postgres:postgres@chess-db:5432/vcc_platform"
+    DATABASE_HOST: "vnm-aws-data-dev-ecomchatbot.cd2nesesllav.ap-southeast-1.rds.amazonaws.com"
+    DATABASE_PORT: "5432"
+    DATABASE_USER: "postgres"
+    DATABASE_NAME: "vcc_platform"
     SECRET_KEY: "dev-secret-key-change-in-production"
     ANALYSIS_CHESS_URL: "http://chess-analysis-service.chess-platform.svc.cluster.local:8001"
     ANALYSIS_XIANGQI_URL: "http://chess-xiangqi-service.chess-platform.svc.cluster.local:8002"
     ANALYSIS_GO_URL: "http://chess-go-service.chess-platform.svc.cluster.local:8003"
     ANALYSIS_GOMOKU_URL: "http://chess-gomoku-service.chess-platform.svc.cluster.local:8004"
+  secrets:
+    - name: DATABASE_PASSWORD
+      secretName: chess-platform-secret
+      secretKey: DATABASE_PASSWORD
 
 frontend:
   replicaCount: 1
