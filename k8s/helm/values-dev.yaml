@@ -19,9 +19,10 @@ backend:
   service:
     type: ClusterIP
     port: 80
+    targetPort: 8000
   ingress:
     host: dev-ml.tech.vinamilklocal.com
-    path: /chess/api
+    path: /chess
     pathType: Prefix
   cpu: 100m
   memory: 256Mi
