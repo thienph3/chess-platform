@@ -21,6 +21,7 @@ import { useAuthContext } from "@/features/auth/context/AuthContext";
 
 import GameClock from "../components/GameClock";
 import GoBoard from "../components/GoBoard";
+import GomokuBoard from "../components/GomokuBoard";
 import XiangqiBoard from "../components/XiangqiBoard";
 import { Difficulty, GameType, ColorChoice, usePlayAI } from "../hooks/usePlayAI";
 
@@ -28,6 +29,7 @@ const GAME_OPTIONS: { value: GameType; label: string }[] = [
   { value: "chess", label: "Cờ vua" },
   { value: "xiangqi", label: "Cờ tướng" },
   { value: "go", label: "Cờ vây" },
+  { value: "gomoku", label: "Cờ caro" },
 ];
 
 const DIFFICULTY_OPTIONS: { value: Difficulty; label: string; aiName: string }[] = [
@@ -87,6 +89,14 @@ function PlayAIPage() {
       if (isThinking || state.gameOver) return false;
       makeMove({ notation: `${String.fromCharCode(97 + col)}${row + 1}`, row, col });
       return true;
+    },
+    [isThinking, state.gameOver, makeMove],
+  );
+
+  const handleGomokuPlace = useCallback(
+    (row: number, col: number) => {
+      if (isThinking || state.gameOver) return;
+      makeMove({ row, col });
     },
     [isThinking, state.gameOver, makeMove],
   );
@@ -206,6 +216,7 @@ function PlayAIPage() {
           )}
           {gameType === "xiangqi" && <XiangqiBoard position={state.fen} onMove={handleXiangqiMove} allowDragging={!isThinking && !state.gameOver} />}
           {gameType === "go" && <GoBoard size={19} stones={[]} onPlace={handleGoPlace} allowPlacing={!isThinking && !state.gameOver} />}
+          {gameType === "gomoku" && <GomokuBoard stones={[]} onPlace={handleGomokuPlace} allowPlacing={!isThinking && !state.gameOver} />}
 
           {/* Bottom bar (me) */}
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75, mt: 0.5 }}>

@@ -1,4 +1,4 @@
-export type GameType = "chess" | "xiangqi" | "go";
+export type GameType = "chess" | "xiangqi" | "go" | "gomoku";
 export type TimeFormat = "bullet" | "blitz" | "rapid" | "standard";
 export type TournamentFormat = "round_robin" | "swiss" | "knockout";
 export type TournamentMode = "online" | "otb";

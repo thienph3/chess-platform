@@ -9,6 +9,7 @@ const GAME_TYPE_LABELS: Record<string, string> = {
   chess: "Cờ vua",
   xiangqi: "Cờ tướng",
   go: "Cờ vây",
+  gomoku: "Cờ caro",
 };
 
 const TIME_FORMAT_LABELS: Record<string, string> = {

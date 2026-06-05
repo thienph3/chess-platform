@@ -40,6 +40,7 @@ export const en = {
     chess: "Chess",
     xiangqi: "Xiangqi",
     go: "Go",
+    gomoku: "Gomoku",
     white: "White",
     black: "Black",
     resign: "Resign",

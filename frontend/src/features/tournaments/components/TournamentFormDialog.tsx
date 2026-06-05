@@ -16,7 +16,7 @@ import { ITournament } from "../types";
 const schema = z.object({
   name: z.string().min(1, "Tên giải đấu không được để trống"),
   description: z.string().optional(),
-  game_type: z.enum(["chess", "xiangqi", "go"]),
+  game_type: z.enum(["chess", "xiangqi", "go", "gomoku"]),
   time_format: z.enum(["bullet", "blitz", "rapid", "standard"]),
   format: z.enum(["round_robin", "swiss", "knockout"]),
   max_participants: z.coerce.number().min(2, "Tối thiểu 2 người"),
@@ -30,6 +30,7 @@ const GAME_TYPES = [
   { value: "chess", label: "Cờ vua" },
   { value: "xiangqi", label: "Cờ tướng" },
   { value: "go", label: "Cờ vây" },
+  { value: "gomoku", label: "Cờ caro" },
 ];
 
 const TIME_FORMATS = [

@@ -33,6 +33,7 @@ const GAME_TYPE_LABELS: Record<GameType, string> = {
   chess: "Cờ vua",
   xiangqi: "Cờ tướng",
   go: "Cờ vây",
+  gomoku: "Cờ caro",
 };
 
 const columns: GridColDef[] = [

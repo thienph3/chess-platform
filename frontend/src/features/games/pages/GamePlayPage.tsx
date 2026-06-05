@@ -25,6 +25,7 @@ import { useSoundEffects } from "@/hooks/useSoundEffects";
 import GameChat from "../components/GameChat";
 import GameClock from "../components/GameClock";
 import GoBoard from "../components/GoBoard";
+import GomokuBoard from "../components/GomokuBoard";
 import XiangqiBoard from "../components/XiangqiBoard";
 import { formatCountdown, useCountdown } from "../hooks/useCountdown";
 import { useCreateGameRoom, useGameRoom } from "../hooks/useGames";
@@ -42,6 +43,7 @@ function GamePlayPage() {
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
   const [xiangqiFen, setXiangqiFen] = useState("rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR");
   const [goStones, setGoStones] = useState<{ row: number; col: number; color: "black" | "white" }[]>([]);
+  const [gomokuStones, setGomokuStones] = useState<{ row: number; col: number; color: "black" | "white" }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const { secondsLeft, isReady } = useCountdown(room?.scheduled_start || null);
 
@@ -98,6 +100,12 @@ function GamePlayPage() {
     return true;
   }, [turn]);
 
+  const handleGomokuPlace = useCallback((row: number, col: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "move", row, col }));
+    setGomokuStones((prev) => [...prev, { row, col, color: turn === "white" ? "white" : "black" }]);
+    setMoves((prev) => [...prev, `${row},${col}`]);
+  }, [turn]);
+
   // Fix 73: Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +153,7 @@ function GamePlayPage() {
           </Stack>
 
           {/* Board */}
-          <BoardRenderer gameType={room.game_type} chessFen={game.fen()} xiangqiFen={xiangqiFen} goStones={goStones} gameOver={!!gameOver} onChessDrop={handleChessDrop} onXiangqiMove={handleXiangqiMove} onGoPlace={handleGoPlace} boardOrientation={boardOrientation} allowDragging={isReady && !gameOver} />
+          <BoardRenderer gameType={room.game_type} chessFen={game.fen()} xiangqiFen={xiangqiFen} goStones={goStones} gomokuStones={gomokuStones} gameOver={!!gameOver} onChessDrop={handleChessDrop} onXiangqiMove={handleXiangqiMove} onGoPlace={handleGoPlace} onGomokuPlace={handleGomokuPlace} boardOrientation={boardOrientation} allowDragging={isReady && !gameOver} />
 
           {/* Player bar (white) */}
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75, mt: 0.5 }}>
@@ -222,20 +230,25 @@ interface BoardRendererProps {
   chessFen: string;
   xiangqiFen: string;
   goStones: { row: number; col: number; color: "black" | "white" }[];
+  gomokuStones: { row: number; col: number; color: "black" | "white" }[];
   gameOver: boolean;
   onChessDrop: (args: { piece: unknown; sourceSquare: string; targetSquare: string | null }) => boolean;
   onXiangqiMove: (from: string, to: string) => boolean;
   onGoPlace: (row: number, col: number) => boolean;
+  onGomokuPlace: (row: number, col: number) => void;
   boardOrientation: "white" | "black";
   allowDragging: boolean;
 }
 
-function BoardRenderer({ gameType, chessFen, xiangqiFen, goStones, onChessDrop, onXiangqiMove, onGoPlace, boardOrientation, allowDragging }: BoardRendererProps) {
+function BoardRenderer({ gameType, chessFen, xiangqiFen, goStones, gomokuStones, onChessDrop, onXiangqiMove, onGoPlace, onGomokuPlace, boardOrientation, allowDragging }: BoardRendererProps) {
   if (gameType === "xiangqi") {
     return <XiangqiBoard position={xiangqiFen} onMove={onXiangqiMove} allowDragging={allowDragging} />;
   }
   if (gameType === "go") {
     return <GoBoard size={19} stones={goStones} onPlace={onGoPlace} allowPlacing={allowDragging} />;
+  }
+  if (gameType === "gomoku") {
+    return <GomokuBoard stones={gomokuStones} onPlace={onGomokuPlace} allowPlacing={allowDragging} />;
   }
   return (
     <Box sx={{ width: { xs: 300, sm: 360, md: 480 } }}>

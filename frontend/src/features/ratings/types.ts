@@ -1,4 +1,4 @@
-export type GameType = "chess" | "xiangqi" | "go";
+export type GameType = "chess" | "xiangqi" | "go" | "gomoku";
 export type TimeFormat = "bullet" | "blitz" | "rapid" | "standard";
 
 export interface ILeaderboardEntry {

@@ -18,6 +18,7 @@ const GAME_TYPES: { value: GameType; label: string }[] = [
   { value: "chess", label: "Cờ vua" },
   { value: "xiangqi", label: "Cờ tướng" },
   { value: "go", label: "Cờ vây" },
+  { value: "gomoku", label: "Cờ caro" },
 ];
 
 const TIME_FORMATS: { value: TimeFormat; label: string }[] = [

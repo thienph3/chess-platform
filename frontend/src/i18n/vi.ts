@@ -40,6 +40,7 @@ export const vi = {
     chess: "Cờ vua",
     xiangqi: "Cờ tướng",
     go: "Cờ vây",
+    gomoku: "Cờ caro",
     white: "Trắng",
     black: "Đen",
     resign: "Đầu hàng",

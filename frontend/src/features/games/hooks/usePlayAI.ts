@@ -4,7 +4,7 @@ import { Chess } from "chess.js";
 
 import apiClient from "@/api/client";
 
-export type GameType = "chess" | "xiangqi" | "go";
+export type GameType = "chess" | "xiangqi" | "go" | "gomoku";
 export type Difficulty = "easy" | "medium" | "hard";
 export type ColorChoice = "white" | "black" | "random";
 
