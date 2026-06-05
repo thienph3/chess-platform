@@ -38,6 +38,7 @@ profiles:
         - name: chess-platform-dev
           chartPath: k8s/helm
           namespace: chess-platform
+          createNamespace: true
           valuesFiles:
           - k8s/helm/values-dev.yaml
           setValues:
@@ -73,6 +74,7 @@ profiles:
         - name: chess-platform-prod
           chartPath: k8s/helm
           namespace: chess-platform
+          createNamespace: true
           valuesFiles:
           - k8s/helm/values-prod.yaml
           setValues:
