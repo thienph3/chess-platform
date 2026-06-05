@@ -1,5 +1,15 @@
 namespace: chess-platform
 
+tolerations:
+- key: "vnm-aws-data-machine-pool"
+  operator: "Equal"
+  value: "general-pool"
+  effect: "NoSchedule"
+- key: "vnm-aws-data-machine-pool"
+  operator: "Equal"
+  value: "compute-pool"
+  effect: "NoSchedule"
+
 backend:
   replicaCount: 2
   serviceLabel: chess-backend

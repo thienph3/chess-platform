@@ -20,6 +20,10 @@ spec:
       labels:
         app: {{ $svc.serviceLabel }}
     spec:
+      {{- if $.Values.tolerations }}
+      tolerations:
+      {{- toYaml $.Values.tolerations | nindent 6 }}
+      {{- end }}
       containers:
       - name: {{ $svc.serviceLabel }}
         image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
