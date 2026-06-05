@@ -8,7 +8,7 @@ metadata:
   namespace: {{ $.Values.namespace }}
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 10m
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/rewrite-target: {{ $svc.ingress.rewriteTarget | default "/$2" }}
 spec:
   ingressClassName: nginx
   rules:
