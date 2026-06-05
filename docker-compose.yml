@@ -26,8 +26,9 @@ services:
       ANALYSIS_CHESS_URL: http://analysis-chess:8001
       ANALYSIS_XIANGQI_URL: http://analysis-xiangqi:8002
       ANALYSIS_GO_URL: http://analysis-go:8003
-      NO_PROXY: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,db"
-      no_proxy: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,db"
+      ANALYSIS_GOMOKU_URL: http://analysis-gomoku:8004
+      NO_PROXY: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,analysis-gomoku,db"
+      no_proxy: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,analysis-gomoku,db"
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -77,6 +78,21 @@ services:
       KATAGO_CONFIG_PATH: /usr/local/share/katago/config.cfg
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles: [full]
+
+  analysis-gomoku:
+    build:
+      context: ./analysis
+      dockerfile: gomoku/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      RAPFI_PATH: /usr/local/bin/rapfi
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 10s
       timeout: 5s
       retries: 3
