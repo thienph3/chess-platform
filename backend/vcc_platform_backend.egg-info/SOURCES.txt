@@ -110,6 +110,7 @@ app/modules/tournaments/standings.py
 app/shared/__init__.py
 app/shared/base_model.py
 app/shared/schemas.py
+tests/test_gomoku.py
 tests/test_play_ai.py
 tests/test_play_human.py
 tests/test_tournament.py
