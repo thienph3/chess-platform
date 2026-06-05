@@ -1,0 +1,35 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.1, pytest-9.0.2, pluggy-1.6.0 -- /home/phthien/.pyenv/versions/3.13.1/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /home/phthien/workspace/vcc-platform/backend
+configfile: pyproject.toml
+plugins: asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 24 items
+
+tests/test_play_ai.py::TestPlayAI::test_start_game_white PASSED          [  4%]
+tests/test_play_ai.py::TestPlayAI::test_start_game_black PASSED          [  8%]
+tests/test_play_ai.py::TestPlayAI::test_start_game_random PASSED         [ 12%]
+tests/test_play_ai.py::TestPlayAI::test_play_valid_move PASSED           [ 16%]
+tests/test_play_ai.py::TestPlayAI::test_play_invalid_move PASSED         [ 20%]
+tests/test_play_ai.py::TestPlayAI::test_resign PASSED                    [ 25%]
+tests/test_play_ai.py::TestPlayAI::test_game_saved_in_history PASSED     [ 29%]
+tests/test_play_ai.py::TestPlayAI::test_ai_player_id_is_fixed PASSED     [ 33%]
+tests/test_play_human.py::TestPlayHuman::test_create_room PASSED         [ 37%]
+tests/test_play_human.py::TestPlayHuman::test_join_room PASSED           [ 41%]
+tests/test_play_human.py::TestPlayHuman::test_cannot_join_own_room PASSED [ 45%]
+tests/test_play_human.py::TestPlayHuman::test_cannot_join_started_room PASSED [ 50%]
+tests/test_play_human.py::TestPlayHuman::test_live_rooms PASSED          [ 54%]
+tests/test_play_human.py::TestPlayHuman::test_get_room_details PASSED    [ 58%]
+tests/test_play_human.py::TestPlayHuman::test_create_room_from_match PASSED [ 62%]
+tests/test_tournament.py::TestTournament::test_create_tournament PASSED  [ 66%]
+tests/test_tournament.py::TestTournament::test_create_otb_tournament PASSED [ 70%]
+tests/test_tournament.py::TestTournament::test_register_participant PASSED [ 75%]
+tests/test_tournament.py::TestTournament::test_generate_round_robin_pairings PASSED [ 79%]
+tests/test_tournament.py::TestTournament::test_submit_match_result PASSED [ 83%]
+tests/test_tournament.py::TestTournament::test_submit_draw_result PASSED [ 87%]
+tests/test_tournament.py::TestTournament::test_create_rooms_for_online_round PASSED [ 91%]
+tests/test_tournament.py::TestTournament::test_tournament_standings PASSED [ 95%]
+tests/test_tournament.py::TestTournament::test_full_online_game_flow PASSED [100%]
+
+======================== 24 passed in 135.10s (0:02:15) ========================

@@ -1,0 +1,97 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: vcc_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/vcc_platform
+      DEBUG: "true"
+      SECRET_KEY: "dev-secret-key-change-in-production"
+      ANALYSIS_CHESS_URL: http://analysis-chess:8001
+      ANALYSIS_XIANGQI_URL: http://analysis-xiangqi:8002
+      ANALYSIS_GO_URL: http://analysis-go:8003
+      NO_PROXY: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,db"
+      no_proxy: "localhost,127.0.0.1,analysis-chess,analysis-xiangqi,analysis-go,db"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # --- Analysis Services ---
+
+  analysis-chess:
+    build:
+      context: ./analysis
+      dockerfile: chess/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      STOCKFISH_PATH: /usr/games/stockfish
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  analysis-xiangqi:
+    build:
+      context: ./analysis
+      dockerfile: xiangqi/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      PIKAFISH_PATH: /usr/local/bin/pikafish
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles: [full]
+
+  analysis-go:
+    build:
+      context: ./analysis
+      dockerfile: go/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      KATAGO_PATH: /usr/local/bin/katago
+      KATAGO_MODEL_PATH: /usr/local/share/katago/model.bin.gz
+      KATAGO_CONFIG_PATH: /usr/local/share/katago/config.cfg
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles: [full]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:
