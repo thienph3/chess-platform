@@ -28,7 +28,7 @@ from app.modules.seasons.models import Season  # noqa: F401
 from app.modules.achievements.models import Achievement, MemberAchievement  # noqa: F401
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.effective_database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
