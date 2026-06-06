@@ -20,6 +20,7 @@ profiles:
         context: ./backend
         docker:
           dockerfile: Dockerfile
+          platforms: ["linux/amd64"]
       - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/frontend
         context: ./frontend
         docker:
@@ -27,14 +28,17 @@ profiles:
           buildArgs:
             VITE_BASE_PATH: /chess/
             VITE_API_BASE_URL: /chess/api/v1
+          platforms: ["linux/amd64"]
       - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-chess
         context: ./analysis
         docker:
           dockerfile: chess/Dockerfile
+          platforms: ["linux/amd64"]
       - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-gomoku
         context: ./analysis
         docker:
           dockerfile: gomoku/Dockerfile
+          platforms: ["linux/amd64"]
     deploy:
       helm:
         releases:
