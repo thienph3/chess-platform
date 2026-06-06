@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import EmptyState from "@/components/EmptyState";
+import PlayerName from "@/components/PlayerName";
 
 import ChallengeDialog from "../components/ChallengeDialog";
 import MatchmakingDialog from "../components/MatchmakingDialog";
@@ -91,9 +92,12 @@ function RoomCard({ room, onJoin }: { room: IGameRoom; onJoin: (r: IGameRoom) =>
       {/* Top player (Black / Opponent) */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, bgcolor: "rgba(0,0,0,0.02)" }}>
         <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: "#444" }}>B</Avatar>
-        <Typography variant="caption" fontWeight={500} noWrap sx={{ flex: 1 }}>
-          {room.black_player_id ? room.black_player_id.slice(0, 8) + "..." : "Chờ đối thủ..."}
-        </Typography>
+        {room.black_player_id ? (
+          <PlayerName memberId={room.black_player_id} variant="caption" />
+        ) : (
+          <Typography variant="caption" color="text.secondary" fontStyle="italic">Chờ đối thủ...</Typography>
+        )}
+        <Box sx={{ flex: 1 }} />
         <Chip label={STATUS_LABELS[room.status]} color={isWaiting ? "success" : "primary"} size="small" sx={{ height: 20, fontSize: "0.65rem" }} />
       </Stack>
 
@@ -110,7 +114,7 @@ function RoomCard({ room, onJoin }: { room: IGameRoom; onJoin: (r: IGameRoom) =>
       {/* Bottom player (White / Creator) */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, borderTop: "1px solid #f0f0f0" }}>
         <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: "#fff", color: "#333", border: "1px solid #ccc" }}>W</Avatar>
-        <Typography variant="caption" fontWeight={500} noWrap>{room.white_player_id.slice(0, 8)}...</Typography>
+        <PlayerName memberId={room.white_player_id} variant="caption" />
       </Stack>
     </Card>
   );
