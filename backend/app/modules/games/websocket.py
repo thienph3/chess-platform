@@ -1,11 +1,11 @@
 """WebSocket handler for real-time gameplay.
 
-Validation is delegated to Analysis Services (Stockfish/Pikafish/KataGo).
-Backend chỉ giữ FEN state và relay messages.
+Flow: join → ready → countdown → playing (server clock) → finished
 """
 import asyncio
 import json
 import logging
+import time
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -18,142 +18,158 @@ logger = logging.getLogger(__name__)
 
 ws_router = APIRouter()
 
-# In-memory state (production: use Redis)
-rooms: dict[str, list[WebSocket]] = defaultdict(list)
-room_states: dict[str, dict[str, Any]] = {}  # room_key -> {fen, turn, game_over, game_type}
-room_ready: dict[str, set] = defaultdict(set)  # room_key -> set of ready websocket ids
 
+# --- In-memory state (production: use Redis) ---
+
+rooms: dict[str, list[WebSocket]] = defaultdict(list)
+
+room_states: dict[str, dict[str, Any]] = {}
+# {fen, turn, game_over, game_type, started}
+
+room_ready: dict[str, set] = defaultdict(set)
+# set of websocket ids that are ready
+
+room_clocks: dict[str, dict[str, Any]] = {}
+# {white_ms, black_ms, active: "white"|"black", last_move_time, increment_ms, started}
+
+
+# --- Helpers ---
 
 async def _broadcast(room_key: str, message: dict) -> None:
     msg = json.dumps(message)
     for conn in rooms[room_key]:
-        await conn.send_text(msg)
-
-
-async def _broadcast_except(room_key: str, message: dict, exclude: WebSocket) -> None:
-    msg = json.dumps(message)
-    for conn in rooms[room_key]:
-        if conn != exclude:
+        try:
             await conn.send_text(msg)
+        except Exception:
+            pass
 
 
-async def _trigger_post_game_analysis(room_id: uuid.UUID) -> None:
-    from app.db.session import async_session_factory
-    from app.modules.games.repository import GameRepository
-    from app.modules.games.service import GameService
-
+async def _send(ws: WebSocket, message: dict) -> None:
     try:
-        async with async_session_factory() as db:
-            repo = GameRepository(db)
-            service = GameService(repo)
-            await service.review_game(room_id)
-            await db.commit()
-            logger.info("Post-game analysis completed for room %s", room_id)
-    except Exception as exc:
-        logger.warning("Post-game analysis failed for room %s: %s", room_id, exc)
+        await ws.send_text(json.dumps(message))
+    except Exception:
+        pass
 
 
-def _cleanup_room(room_key: str) -> None:
-    room_states.pop(room_key, None)
+def _get_clocks(room_key: str) -> dict[str, int]:
+    """Get current clock values accounting for elapsed time."""
+    clock = room_clocks.get(room_key)
+    if not clock or not clock.get("started"):
+        return {"white_clock": clock["white_ms"] if clock else 0, "black_clock": clock["black_ms"] if clock else 0}
+
+    elapsed = int((time.time() - clock["last_move_time"]) * 1000)
+    white_ms = clock["white_ms"]
+    black_ms = clock["black_ms"]
+
+    if clock["active"] == "white":
+        white_ms = max(0, white_ms - elapsed)
+    else:
+        black_ms = max(0, black_ms - elapsed)
+
+    return {"white_clock": white_ms, "black_clock": black_ms}
 
 
-async def _abort_abandoned_room(room_id: uuid.UUID) -> None:
-    """Mark room as aborted/draw if all players disconnected."""
-    from app.db.session import async_session_factory
-    from app.modules.games.models import GameRoomStatus
-    from app.modules.games.repository import GameRepository
+def _deduct_and_switch(room_key: str) -> dict[str, int]:
+    """Deduct elapsed time from active player, add increment, switch turn."""
+    clock = room_clocks.get(room_key)
+    if not clock or not clock.get("started"):
+        return _get_clocks(room_key)
 
-    await asyncio.sleep(30)  # Grace period — wait 30s in case they reconnect
+    now = time.time()
+    elapsed = int((now - clock["last_move_time"]) * 1000)
 
-    # Check if anyone reconnected
-    room_key = str(room_id)
-    if room_key in rooms and rooms[room_key]:
-        return  # Someone reconnected
+    if clock["active"] == "white":
+        clock["white_ms"] = max(0, clock["white_ms"] - elapsed + clock["increment_ms"])
+        clock["active"] = "black"
+    else:
+        clock["black_ms"] = max(0, clock["black_ms"] - elapsed + clock["increment_ms"])
+        clock["active"] = "white"
 
-    try:
-        async with async_session_factory() as db:
-            repo = GameRepository(db)
-            room = await repo.get_room_by_id(room_id)
-            if room and room.status == GameRoomStatus.playing:
-                room.status = GameRoomStatus.finished
-                room.result = "draw"
-                await db.commit()
-                logger.info("Room %s abandoned — marked as draw", room_id)
-    except Exception as exc:
-        logger.error("Failed to abort abandoned room %s: %s", room_id, exc)
+    clock["last_move_time"] = now
+    return {"white_clock": clock["white_ms"], "black_clock": clock["black_ms"]}
 
 
-async def _init_room(room_key: str, game_type: str) -> dict[str, Any]:
-    """Khởi tạo room state từ analysis service."""
-    state = await get_initial_state(game_type)
-    room_states[room_key] = {
-        "fen": state.get("fen", ""),
-        "turn": state.get("turn", "white"),
-        "game_over": False,
-        "game_type": game_type,
-        "started": False,
-    }
-    return {"type": "state", "game_type": game_type, **room_states[room_key]}
-
+# --- Handlers ---
 
 async def _handle_ready(room_key: str, websocket: WebSocket, room_id: uuid.UUID) -> None:
-    """Player marks ready. When both ready → 5s countdown → start."""
-    ws_id = id(websocket)
-    room_ready[room_key].add(ws_id)
-
+    """Player marks ready. Both ready → 5s countdown → start."""
+    room_ready[room_key].add(id(websocket))
     await _broadcast(room_key, {"type": "ready_status", "ready_count": len(room_ready[room_key]), "needed": 2})
 
-    if len(room_ready[room_key]) >= 2:
-        # Both ready → countdown
+    if len(room_ready[room_key]) >= 2 and len(rooms[room_key]) >= 2:
+        # Countdown
         for i in range(5, 0, -1):
             await _broadcast(room_key, {"type": "countdown", "seconds": i})
             await asyncio.sleep(1)
 
-        # Start game
+        # Init game
         state = room_states.get(room_key)
-        if state:
-            state["started"] = True
+        game_type = state["game_type"] if state else "chess"
+        init = await get_initial_state(game_type)
+        room_states[room_key] = {
+            "fen": init.get("fen", ""),
+            "turn": init.get("turn", "white"),
+            "game_over": False,
+            "game_type": game_type,
+            "started": True,
+        }
 
-        # Init game state if not already
-        if not state or not state.get("fen"):
-            game_type = state.get("game_type", "chess") if state else "chess"
-            init_state = await get_initial_state(game_type)
-            room_states[room_key] = {
-                "fen": init_state.get("fen", ""),
-                "turn": init_state.get("turn", "white"),
-                "game_over": False,
-                "game_type": game_type,
-                "started": True,
-            }
+        # Init clock
+        clock = room_clocks.get(room_key, {})
+        clock["started"] = True
+        clock["last_move_time"] = time.time()
+        clock["active"] = "white"  # white moves first (or black for gomoku, handled by turn)
+        room_clocks[room_key] = clock
 
-        await _broadcast(room_key, {"type": "game_start", "fen": room_states[room_key]["fen"], "turn": room_states[room_key]["turn"]})
+        clocks = _get_clocks(room_key)
+        await _broadcast(room_key, {
+            "type": "game_start",
+            "fen": room_states[room_key]["fen"],
+            "turn": room_states[room_key]["turn"],
+            **clocks,
+        })
+
+        # Start clock checker
+        asyncio.create_task(_clock_checker(room_key, room_id))
+
+
+async def _handle_unready(room_key: str, websocket: WebSocket) -> None:
+    room_ready[room_key].discard(id(websocket))
+    await _broadcast(room_key, {"type": "ready_status", "ready_count": len(room_ready[room_key]), "needed": 2})
 
 
 async def _handle_move(room_key: str, message: dict, websocket: WebSocket, room_id: uuid.UUID) -> None:
-    """Validate move qua analysis service, broadcast kết quả."""
     state = room_states.get(room_key)
-    if not state:
-        await websocket.send_text(json.dumps({"type": "error", "message": "Room chưa khởi tạo"}))
+    if not state or not state.get("started"):
+        await _send(websocket, {"type": "error", "message": "Ván đấu chưa bắt đầu"})
         return
-
     if state["game_over"]:
-        await websocket.send_text(json.dumps({"type": "error", "message": "Ván đấu đã kết thúc"}))
+        await _send(websocket, {"type": "error", "message": "Ván đấu đã kết thúc"})
         return
 
-    game_type = state["game_type"]
-    fen = state["fen"]
+    # Check timeout before processing
+    clocks = _get_clocks(room_key)
+    clock = room_clocks.get(room_key)
+    if clock and clocks["white_clock"] <= 0:
+        await _end_game(room_key, room_id, "black_win", "timeout")
+        return
+    if clock and clocks["black_clock"] <= 0:
+        await _end_game(room_key, room_id, "white_win", "timeout")
+        return
 
-    # Gọi analysis service validate
-    result = await validate_move(game_type, fen, message)
-
+    # Validate move
+    result = await validate_move(state["game_type"], state["fen"], message)
     if not result.valid:
-        await websocket.send_text(json.dumps({"type": "error", "message": "Nước đi không hợp lệ"}))
+        await _send(websocket, {"type": "error", "message": "Nước đi không hợp lệ"})
         return
 
-    # Cập nhật state
+    # Update state
     state["fen"] = result.new_fen
     state["turn"] = result.turn
     state["game_over"] = result.game_over
+
+    # Update clock
+    new_clocks = _deduct_and_switch(room_key)
 
     # Broadcast move
     response: dict[str, Any] = {
@@ -161,51 +177,67 @@ async def _handle_move(room_key: str, message: dict, websocket: WebSocket, room_
         **{k: v for k, v in message.items() if k != "type"},
         "fen": result.new_fen,
         "turn": result.turn,
+        **new_clocks,
     }
-    if result.captures:
-        response["captures"] = result.captures
-
     await _broadcast(room_key, response)
 
-    # Handle game over
+    # Game over by rules
     if result.game_over:
-        game_over_msg: dict[str, Any] = {
-            "type": "game_over",
-            "result": result.result or "draw",
-            "reason": result.reason or "unknown",
-        }
-        if result.score:
-            game_over_msg["score"] = result.score
-        await _broadcast(room_key, game_over_msg)
-        asyncio.create_task(_trigger_post_game_analysis(room_id))
+        await _end_game(room_key, room_id, result.result or "draw", result.reason or "unknown")
 
 
-async def _handle_pass(room_key: str, websocket: WebSocket, room_id: uuid.UUID) -> None:
-    """Handle pass (Go only)."""
+async def _end_game(room_key: str, room_id: uuid.UUID, result: str, reason: str) -> None:
+    """End the game and update DB."""
     state = room_states.get(room_key)
-    if not state or state["game_type"] != "go":
-        return
+    if state:
+        state["game_over"] = True
 
-    result = await validate_move("go", state["fen"], {"action": "pass"})
+    clock = room_clocks.get(room_key)
+    if clock:
+        clock["started"] = False
 
-    state["fen"] = result.new_fen
-    state["turn"] = result.turn
-    state["game_over"] = result.game_over
+    clocks = _get_clocks(room_key)
+    await _broadcast(room_key, {"type": "game_over", "result": result, "reason": reason, **clocks})
 
-    response: dict[str, Any] = {"type": "pass", "fen": result.new_fen, "turn": result.turn}
-    await _broadcast(room_key, response)
+    # Update DB
+    asyncio.create_task(_save_game_result(room_id, result))
 
-    if result.game_over:
-        game_over_msg: dict[str, Any] = {
-            "type": "game_over",
-            "result": result.result or "draw",
-            "reason": result.reason or "double_pass",
-        }
-        if result.score:
-            game_over_msg["score"] = result.score
-        await _broadcast(room_key, game_over_msg)
-        asyncio.create_task(_trigger_post_game_analysis(room_id))
 
+async def _save_game_result(room_id: uuid.UUID, result: str) -> None:
+    from app.db.session import async_session_factory
+    from app.modules.games.models import GameRoomStatus
+    from app.modules.games.repository import GameRepository
+
+    try:
+        async with async_session_factory() as db:
+            repo = GameRepository(db)
+            room = await repo.get_room_by_id(room_id)
+            if room and room.status != GameRoomStatus.finished:
+                room.status = GameRoomStatus.finished
+                room.result = result
+                await db.commit()
+    except Exception as exc:
+        logger.error("Save game result failed: %s", exc)
+
+
+async def _clock_checker(room_key: str, room_id: uuid.UUID) -> None:
+    """Check clock every second, end game if time runs out."""
+    while True:
+        await asyncio.sleep(1)
+        state = room_states.get(room_key)
+        if not state or state.get("game_over") or not state.get("started"):
+            return
+
+        clocks = _get_clocks(room_key)
+        if clocks["white_clock"] <= 0:
+            await _end_game(room_key, room_id, "black_win", "timeout")
+            return
+        if clocks["black_clock"] <= 0:
+            await _end_game(room_key, room_id, "white_win", "timeout")
+            return
+
+
+# --- Main WebSocket endpoint ---
 
 @ws_router.websocket("/ws/game/{room_id}")
 async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
@@ -213,12 +245,46 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
     room_key = str(room_id)
     rooms[room_key].append(websocket)
 
-    # Gửi state hiện tại (hoặc default nếu chưa init)
+    # Init clock from DB if not exists
+    if room_key not in room_clocks:
+        from app.db.session import async_session_factory
+        from app.modules.games.repository import GameRepository
+        try:
+            async with async_session_factory() as db:
+                repo = GameRepository(db)
+                room = await repo.get_room_by_id(room_id)
+                if room:
+                    room_clocks[room_key] = {
+                        "white_ms": room.time_control * 1000,
+                        "black_ms": room.time_control * 1000,
+                        "increment_ms": room.increment * 1000,
+                        "active": "white",
+                        "last_move_time": 0,
+                        "started": False,
+                    }
+                    if room_key not in room_states:
+                        room_states[room_key] = {
+                            "fen": room.fen or "",
+                            "turn": "white",
+                            "game_over": False,
+                            "game_type": room.game_type,
+                            "started": False,
+                        }
+        except Exception as exc:
+            logger.error("Failed to load room: %s", exc)
+
+    # Send current state
     state = room_states.get(room_key)
-    if state:
-        await websocket.send_text(json.dumps({"type": "state", **state}))
+    clocks = _get_clocks(room_key)
+    if state and state.get("started"):
+        await _send(websocket, {"type": "state", **state, **clocks})
     else:
-        await websocket.send_text(json.dumps({"type": "waiting_init"}))
+        await _send(websocket, {
+            "type": "waiting",
+            "players_connected": len(rooms[room_key]),
+            "ready_count": len(room_ready[room_key]),
+            **clocks,
+        })
 
     try:
         while True:
@@ -228,32 +294,35 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
 
             if msg_type == "init":
                 game_type = message.get("game_type", "chess")
-                state_msg = await _init_room(room_key, game_type)
-                await _broadcast(room_key, state_msg)
+                state = room_states.get(room_key)
+                if state:
+                    state["game_type"] = game_type
+                await _broadcast(room_key, {"type": "room_info", "game_type": game_type, "players_connected": len(rooms[room_key])})
 
             elif msg_type == "ready":
                 await _handle_ready(room_key, websocket, room_id)
 
-            elif msg_type == "move":
-                state = room_states.get(room_key)
-                if state and not state.get("started"):
-                    await websocket.send_text(json.dumps({"type": "error", "message": "Ván đấu chưa bắt đầu. Hãy nhấn Sẵn sàng."}))
-                else:
-                    await _handle_move(room_key, message, websocket, room_id)
+            elif msg_type == "unready":
+                await _handle_unready(room_key, websocket)
 
-            elif msg_type == "pass":
-                await _handle_pass(room_key, websocket, room_id)
+            elif msg_type == "move":
+                await _handle_move(room_key, message, websocket, room_id)
 
             elif msg_type == "resign":
-                await _broadcast_except(room_key, {"type": "resign", "by": "opponent"}, websocket)
-                _cleanup_room(room_key)
+                state = room_states.get(room_key)
+                if state and state.get("started"):
+                    # Determine who resigned
+                    idx = rooms[room_key].index(websocket)
+                    result = "black_win" if idx == 0 else "white_win"
+                    await _end_game(room_key, room_id, result, "resign")
+                else:
+                    await _broadcast(room_key, {"type": "resign", "by": "opponent"})
 
             elif msg_type == "draw_offer":
-                await _broadcast_except(room_key, {"type": "draw_offered"}, websocket)
+                await _broadcast(room_key, {"type": "draw_offered"})
 
             elif msg_type == "draw_accept":
-                await _broadcast(room_key, {"type": "game_over", "result": "draw", "reason": "agreement"})
-                _cleanup_room(room_key)
+                await _end_game(room_key, room_id, "draw", "agreement")
 
             elif msg_type == "chat":
                 await _broadcast(room_key, {"type": "chat", "message": message.get("message", ""), "sender": "player"})
@@ -261,9 +330,16 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
     except WebSocketDisconnect:
         rooms[room_key].remove(websocket)
         room_ready[room_key].discard(id(websocket))
+
+        # Notify remaining players
+        await _broadcast(room_key, {"type": "player_disconnected", "players_connected": len(rooms[room_key])})
+
         if not rooms[room_key]:
             del rooms[room_key]
             room_ready.pop(room_key, None)
-            _cleanup_room(room_key)
-            # All players disconnected — abort if still playing
-            asyncio.create_task(_abort_abandoned_room(room_id))
+            state = room_states.get(room_key)
+            if not state or not state.get("started"):
+                # Not started yet — clean up
+                room_states.pop(room_key, None)
+                room_clocks.pop(room_key, None)
+            # If started, clock keeps ticking — _clock_checker will handle timeout
