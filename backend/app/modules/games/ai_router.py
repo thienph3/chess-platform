@@ -138,6 +138,10 @@ async def start_ai_game(
                 room.fen = fen
                 await db.commit()
 
+    # Start AI bot worker (plays via same WebSocket flow)
+    from app.modules.games.ai_bot import start_bot_for_room
+    await start_bot_for_room(room.id, request.game_type, request.difficulty.value)
+
     return ResponseEnvelope(data=AIGameStartResponse(
         room_id=room.id,
         player_color="white" if player_is_white else "black",
