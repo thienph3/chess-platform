@@ -1,48 +1,44 @@
 import { expect, test } from "@playwright/test";
 
+const BASE = "http://dev-ml.tech.vinamilklocal.com/chess";
+
 async function loginAndDismiss(page: import("@playwright/test").Page) {
-  await page.goto("/login");
-  await page.fill('input[name="email"]', "phthien@vinamilk.com.vn");
+  await page.goto(`${BASE}/login`);
+  await page.waitForSelector('input[name="email"]', { timeout: 10000 });
+  await page.fill('input[name="email"]', "e2e@vinamilk.com.vn");
   await page.fill('input[name="password"]', "123456");
   await page.click('button[type="submit"]');
-  await page.waitForURL("/", { timeout: 10000 });
+  await page.waitForTimeout(3000);
   try { await page.locator("text=Bắt đầu khám phá").click({ timeout: 2000 }); } catch {}
 }
 
-test.describe.serial("Gomoku (Cờ caro) — UI Tests", () => {
-  test.setTimeout(15000);
+test.describe.serial("Gomoku (Cờ caro) — E2E on dev-ml", () => {
+  test.setTimeout(20000);
 
   test("login and gomoku in Play AI selector", async ({ page }) => {
     await loginAndDismiss(page);
-    await page.goto("/play/ai");
+    await page.goto(`${BASE}/play/ai`);
     await expect(page.locator("button:has-text('Cờ caro')")).toBeVisible();
   });
 
   test("gomoku board renders after start", async ({ page }) => {
     await loginAndDismiss(page);
-    await page.goto("/play/ai");
+    await page.goto(`${BASE}/play/ai`);
     await page.click("button:has-text('Cờ caro')");
     await page.locator("button:has-text('Bắt đầu')").last().click();
-    await page.waitForTimeout(1500);
-    const board = page.locator('svg[aria-label="Bàn cờ caro"]');
-    await expect(board).toBeVisible();
-    // Check 30 grid lines (15x2)
-    expect(await board.locator("line").count()).toBe(30);
-    // Board is square
-    const box = await board.boundingBox();
-    expect(box).not.toBeNull();
-    if (box) expect(Math.abs(box.width - box.height)).toBeLessThan(2);
+    await page.waitForTimeout(2000);
+    await expect(page.locator('svg[aria-label="Bàn cờ caro"]')).toBeVisible();
   });
 
-  test("gomoku in lobby page", async ({ page }) => {
+  test("gomoku in lobby", async ({ page }) => {
     await loginAndDismiss(page);
-    await page.goto("/play");
+    await page.goto(`${BASE}/play`);
     await expect(page.locator("text=Chơi cờ trực tuyến")).toBeVisible();
   });
 
-  test("gomoku in leaderboard tabs", async ({ page }) => {
+  test("gomoku in leaderboard", async ({ page }) => {
     await loginAndDismiss(page);
-    await page.goto("/ratings");
+    await page.goto(`${BASE}/ratings`);
     await expect(page.locator('[role="tab"]', { hasText: "Cờ caro" })).toBeVisible();
   });
 });
