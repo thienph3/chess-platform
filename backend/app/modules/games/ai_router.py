@@ -115,6 +115,16 @@ async def start_ai_game(
     room.fen = fen
     await db.commit()
 
+    # Init server clock
+    import time as _time
+    from app.modules.games import redis_store
+    room_key = str(room.id)
+    await redis_store.save_clock(
+        room_key, request.time_control * 1000, request.time_control * 1000,
+        "white" if player_is_white else "black",
+        _time.time(), request.increment * 1000, True,
+    )
+
     # Nếu AI đi trước (player cầm đen)
     ai_first_move = None
     if not player_is_white:
@@ -142,7 +152,7 @@ async def play_ai_move(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Player đi 1 nước → validate → AI trả lời."""
+    """Player đi 1 nước → validate → AI trả lời. Server clock enforced."""
     repo = GameRepository(db)
     room = await repo.get_room_by_id(request.room_id)
     if not room:
@@ -152,11 +162,58 @@ async def play_ai_move(
 
     fen = room.fen or ""
     game_type = room.game_type
+    room_key = str(room.id)
+
+    # Load/init clock from Redis
+    from app.modules.games import redis_store
+    import time as _time
+    clock = await redis_store.get_clock(room_key)
+    if not clock:
+        clock = {
+            "white_ms": room.time_control * 1000,
+            "black_ms": room.time_control * 1000,
+            "increment_ms": room.increment * 1000,
+            "active": "white",
+            "last_move_time": _time.time(),
+            "started": True,
+        }
+
+    # Deduct player's thinking time
+    now = _time.time()
+    elapsed = int((now - clock["last_move_time"]) * 1000)
+    player_color = "white" if room.white_player_id != AI_PLAYER_ID else "black"
+    if player_color == "white":
+        clock["white_ms"] = max(0, clock["white_ms"] - elapsed)
+    else:
+        clock["black_ms"] = max(0, clock["black_ms"] - elapsed)
+
+    # Check player timeout
+    if clock["white_ms"] <= 0 and player_color == "white":
+        room.status = GameRoomStatus.finished
+        room.result = "black_win"
+        await db.commit()
+        await redis_store.delete_room(room_key)
+        return ResponseEnvelope(data=AIPlayResponse(valid=True, game_over=True, result="black_win", turn="", new_fen=fen, ai_fen=fen))
+    if clock["black_ms"] <= 0 and player_color == "black":
+        room.status = GameRoomStatus.finished
+        room.result = "white_win"
+        await db.commit()
+        await redis_store.delete_room(room_key)
+        return ResponseEnvelope(data=AIPlayResponse(valid=True, game_over=True, result="white_win", turn="", new_fen=fen, ai_fen=fen))
 
     # Validate player move
     result = await validate_move(game_type, fen, request.move)
     if not result.valid:
+        # Save clock (player still thinking)
+        clock["last_move_time"] = now
+        await redis_store.save_clock(room_key, clock["white_ms"], clock["black_ms"], clock["active"], now, clock["increment_ms"], True)
         return ResponseEnvelope(data=AIPlayResponse(valid=False))
+
+    # Add increment for player
+    if player_color == "white":
+        clock["white_ms"] += clock["increment_ms"]
+    else:
+        clock["black_ms"] += clock["increment_ms"]
 
     # Lưu player move
     moves = await repo.get_moves(request.room_id)
@@ -171,16 +228,26 @@ async def play_ai_move(
         room.status = GameRoomStatus.finished
         room.result = result.result
         await db.commit()
+        await redis_store.delete_room(room_key)
         return ResponseEnvelope(data=AIPlayResponse(
             valid=True, player_move_san=uci, new_fen=result.new_fen,
             game_over=True, result=result.result, turn=result.turn,
         ))
 
     # AI responds
+    ai_think_start = _time.time()
     difficulty = _get_room_difficulty(room)
     ai_uci = await _get_ai_move(result.new_fen, game_type, difficulty)
+    ai_think_elapsed = int((_time.time() - ai_think_start) * 1000)
     ai_result = None
     ai_fen = result.new_fen
+
+    # Deduct AI thinking time
+    ai_color = "black" if player_color == "white" else "white"
+    if ai_color == "white":
+        clock["white_ms"] = max(0, clock["white_ms"] - ai_think_elapsed + clock["increment_ms"])
+    else:
+        clock["black_ms"] = max(0, clock["black_ms"] - ai_think_elapsed + clock["increment_ms"])
 
     if ai_uci:
         ai_move_dict = _parse_ai_move(game_type, ai_uci)
@@ -194,6 +261,14 @@ async def play_ai_move(
                 room.result = ai_val.result
             await db.commit()
             ai_result = ai_val
+
+    # Save clock — player's turn starts now
+    clock["last_move_time"] = _time.time()
+    clock["active"] = player_color
+    await redis_store.save_clock(room_key, clock["white_ms"], clock["black_ms"], clock["active"], clock["last_move_time"], clock["increment_ms"], True)
+
+    if ai_result and ai_result.game_over:
+        await redis_store.delete_room(room_key)
 
     resp = AIPlayResponse(
         valid=True, player_move_san=uci, new_fen=ai_fen,
