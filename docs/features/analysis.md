@@ -2,7 +2,7 @@
 
 ## Tổng quan
 
-3 services riêng biệt, mỗi service chạy 1 engine binary. Chịu trách nhiệm:
+4 services riêng biệt, mỗi service chạy 1 engine binary. Chịu trách nhiệm:
 - **Move validation** — validate nước đi real-time cho Online Play
 - **Game analysis** — review ván đấu, tính accuracy
 - **PGN export** — generate PGN chuẩn format
@@ -17,6 +17,7 @@ Backend KHÔNG chứa game logic — chỉ gọi analysis services qua HTTP.
 | Chess | Stockfish 17 | 8001 | UCI |
 | Xiangqi | Pikafish | 8002 | UCI |
 | Go | KataGo | 8003 | GTP |
+| Gomoku | Rapfi | 8004 | Gomocup |
 
 ## Tính năng
 
@@ -63,6 +64,11 @@ analysis/
 └── go/                 # Port 8003 — KataGo
     ├── Dockerfile      # Download binary + model b60c320
     ├── engine.py       # GTP async subprocess adapter
+    ├── main.py         # FastAPI app
+    └── pyproject.toml
+└── gomoku/             # Port 8004 — Rapfi
+    ├── Dockerfile      # Download Rapfi binary
+    ├── engine.py       # Gomocup protocol adapter
     ├── main.py         # FastAPI app
     └── pyproject.toml
 ```
@@ -156,12 +162,13 @@ Frontend → Backend API (WebSocket) → Analysis Service (internal HTTP)
 
 ## Deployment
 
-- 3 Docker containers riêng biệt, deploy/scale độc lập
+- 4 Docker containers riêng biệt, deploy/scale độc lập
 - Chess (port 8001): `apt install stockfish` — image ~50MB
 - Xiangqi (port 8002): Pikafish build from source — image ~60MB
 - Go (port 8003): KataGo eigen + model `kata1-b60c320` — image ~350MB
+- Gomoku (port 8004): Rapfi binary (Gomocup protocol) — image ~40MB
 - Backend route request đến đúng service theo game_type
-- Có thể chỉ deploy Chess + Xiangqi nếu CLB không chơi Go
+- Có thể chỉ deploy Chess + Xiangqi nếu CLB không chơi Go/Gomoku
 
 ## Tech Stack
 
@@ -170,14 +177,15 @@ Frontend → Backend API (WebSocket) → Analysis Service (internal HTTP)
 | Framework | FastAPI (async) |
 | Chess engine comm | python-chess (UCI protocol) |
 | Go engine comm | Custom GTP client |
+| Gomoku engine comm | Custom Gomocup client |
 | Task queue (future) | Celery + Redis (cho heavy analysis) |
-| Engine binaries | Stockfish 17, Pikafish, KataGo |
+| Engine binaries | Stockfish 17, Pikafish, KataGo, Rapfi |
 
 ## Roadmap
 
 | Phase | Tính năng | Trạng thái |
 |-------|-----------|-----------|
-| 1 | Move validation endpoint (Chess/Xiangqi/Go) | ✅ |
+| 1 | Move validation endpoint (Chess/Xiangqi/Go/Gomoku) | ✅ |
 | 2 | Position analysis | ✅ |
 | 3 | Game review + accuracy scoring | ✅ |
 | 4 | Frontend integration (eval bar, move classification) | ✅ |

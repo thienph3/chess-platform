@@ -10,7 +10,7 @@
 - `GET /api/v1/ratings/:member_id/history` — Lịch sử thay đổi rating
 - `POST /api/v1/ratings/calculate` — Tính ELO cho 1 ván đấu (option `rated: true/false`)
 
-### ELO Algorithm (FIDE standard, áp dụng cho cả 3 môn)
+### ELO Algorithm (FIDE standard, áp dụng cho cả 4 môn)
 - Rating khởi điểm: 1500 (FIDE standard cho unrated players)
 - Rating floor: 100 (không thể xuống dưới)
 - K-factor (theo FIDE):
@@ -19,7 +19,7 @@
   - K=10: player có rating >= 2400
 - Formula: `new = old + K * (actual - expected)`
 - Expected: `1 / (1 + 10^((opp - player) / 400))`
-- 12 rating slots: 3 game types × 4 time formats
+- 16 rating slots: 4 game types × 4 time formats
 - Option `rated`: ván đấu có thể chọn không tính ELO (friendly/import lịch sử)
 
 ### Frontend

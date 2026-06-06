@@ -34,6 +34,8 @@
 
 ## Pairing Algorithms
 
+Hỗ trợ cả 4 bộ môn (Chess, Xiangqi, Go, Gomoku) với tất cả format:
+
 - **Round Robin**: full schedule (n-1 vòng), xen kẽ trắng/đen
 - **Swiss**: py4swiss (FIDE Dutch system) + fallback với color balance, avoid repeat
 - **Knockout**: random bracket, loại trực tiếp

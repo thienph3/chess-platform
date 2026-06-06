@@ -44,6 +44,7 @@ Client → Server:
   { "type": "move", "from": "e2", "to": "e4", "promotion": "q" }  // Chess
   { "type": "move", "from_row": 9, "from_col": 4, "to_row": 8, "to_col": 4 }  // Xiangqi
   { "type": "move", "row": 3, "col": 3 }  // Go
+  { "type": "move", "row": 7, "col": 7 }  // Gomoku (15×15 board)
   { "type": "pass" }  // Go only
   { "type": "resign" }
   { "type": "draw_offer" }
@@ -75,6 +76,7 @@ Server → Client:
 | Chess | react-chessboard | Drag & drop |
 | Xiangqi | react-xiangqiboard | Drag & drop |
 | Go | Custom SVG | Click to place |
+| Gomoku | Custom SVG (15×15 grid) | Click to place |
 
 ## Features
 
