@@ -35,14 +35,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rate limiting cho auth endpoints
-app.add_middleware(
-    RateLimitMiddleware,
-    rate_limits={
-        "/api/v1/auth/login": (5, 60),       # 5 login attempts per minute
-        "/api/v1/auth/register": (3, 60),     # 3 registrations per minute
-        "/api/v1/auth/forgot-password": (3, 300),  # 3 per 5 minutes
-    },
+# Rate limiting disabled for dev — enable in production
+# app.add_middleware(
+#     RateLimitMiddleware,
+#     rate_limits={
+#         "/api/v1/auth/login": (5, 60),
+#         "/api/v1/auth/register": (3, 60),
+#         "/api/v1/auth/forgot-password": (3, 300),
+#     },
+# )
 )
 
 app.add_exception_handler(AppException, app_exception_handler)
