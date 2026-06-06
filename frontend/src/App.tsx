@@ -1,4 +1,5 @@
 import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
 import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
@@ -33,7 +34,11 @@ const TrainingPage = lazy(() => import("./features/training/pages/TrainingPage")
 const NewsPage = lazy(() => import("./features/news/pages/NewsPage"));
 const GalleryPage = lazy(() => import("./features/gallery/pages/GalleryPage"));
 
-const PageFallback = () => <Box p={3} />;
+const PageFallback = () => (
+  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+    <CircularProgress size={36} sx={{ color: "#00653E" }} />
+  </Box>
+);
 
 function LazyPage({ children }: { children: React.ReactNode }) {
   return (
