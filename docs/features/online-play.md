@@ -1,96 +1,111 @@
 # Online Play — Chơi cờ trực tiếp ✅
 
-## Architecture
+## Kiến trúc
 
 ```
-Client (WebSocket) → Backend (stateless relay, giữ FEN state)
+Client (WebSocket) → Backend (auth + turn enforcement + server clock)
                         ↓ HTTP
-                   Analysis Service (validate + analyze + PGN)
+                   Analysis Service (validate + suggest)
+                        ↓
+                      Redis (game state + clock + pub/sub)
 ```
 
-Backend KHÔNG chứa game logic. Mọi validation được delegate sang Analysis Services.
+## Game Flow (Human vs Human)
 
-## Game Modes
+```
+Create room → Join → Both Ready → 5s Countdown → Playing → Finished
+```
 
-- **Casual**: tạo phòng tự do, ai cũng join được
-- **AI**: chơi với máy (difficulty easy/medium/hard, chọn màu/thể thức)
-- **Tournament**: room tạo từ match, scheduled_start, board locked đến giờ
+1. Player 1 tạo phòng (game_type, time_control, increment)
+2. Player 2 tham gia
+3. Cả 2 nhấn "Sẵn sàng" → server đếm ngược 5s
+4. Game start → clock bắt đầu chạy
+5. Kết thúc: thắng / hết giờ / đầu hàng / hòa
 
-## Scheduled Start (Tournament games)
+## Game Flow (Human vs AI)
 
-- `game_rooms.scheduled_start` — thời điểm bắt đầu
-- Player vào room sớm: thấy board + countdown, không đi được
-- Đúng giờ: frontend unlock board, clock bắt đầu chạy
-- Nếu player không vào: hết giờ → forfeit
+Giống hệt Human vs Human — AI là bot player:
 
-## API
+1. Player tạo phòng AI (chọn bộ môn, độ khó, thể thức)
+2. Bot tự động join + ready
+3. Countdown → start
+4. Bot tự đi nước khi đến lượt (gọi analysis service)
+5. Cùng clock, cùng protocol, cùng GamePlayPage
 
-| Method | Endpoint | Mô tả |
-|--------|----------|--------|
-| POST | /api/v1/games | Tạo phòng chơi (requires auth) |
-| GET | /api/v1/games/live | Danh sách phòng đang chờ/đang chơi |
-| GET | /api/v1/games/:id | Thông tin phòng |
-| POST | /api/v1/games/:id/join | Tham gia phòng |
-| GET | /api/v1/games/:id/moves | Lịch sử nước đi |
-| GET | /api/v1/games/:id/pgn | Export PGN (gọi analysis service) |
-| POST | /api/v1/games/from-match/:match_id | Tạo phòng từ ván đấu giải |
-| WS | /ws/game/:id | WebSocket real-time gameplay |
+## Server Clock (Source of Truth)
+
+- Clock lưu trong Redis, deduct khi player đi nước
+- Fischer increment: cộng sau mỗi nước đi
+- Timeout: server check mỗi 1s, hết giờ = thua
+- Disconnect: clock vẫn chạy, player có thể reconnect
 
 ## WebSocket Protocol
 
 ```
+WS URL: /ws/game/{room_id}?token=JWT
+
 Client → Server:
-  { "type": "init", "game_type": "chess" }
-  { "type": "move", "from": "e2", "to": "e4", "promotion": "q" }  // Chess
-  { "type": "move", "from_row": 9, "from_col": 4, "to_row": 8, "to_col": 4 }  // Xiangqi
-  { "type": "move", "row": 3, "col": 3 }  // Go
-  { "type": "move", "row": 7, "col": 7 }  // Gomoku (15×15 board)
-  { "type": "pass" }  // Go only
+  { "type": "ready" }
+  { "type": "unready" }
+  { "type": "move", "from": "e2", "to": "e4" }         // Chess/Xiangqi
+  { "type": "move", "row": 7, "col": 7 }               // Gomoku/Go
   { "type": "resign" }
   { "type": "draw_offer" }
   { "type": "draw_accept" }
   { "type": "chat", "message": "..." }
 
 Server → Client:
-  { "type": "state", "game_type": "chess", "fen": "...", "turn": "white", "game_over": false }
-  { "type": "move", ..., "fen": "...", "turn": "..." }
-  { "type": "game_over", "result": "white_win", "reason": "checkmate" }
-  { "type": "error", "message": "Nước đi không hợp lệ" }
-  { "type": "resign", "by": "opponent" }
+  { "type": "waiting", "role": "white", "players_connected": 1, ... }
+  { "type": "ready_status", "ready_count": 1, "needed": 2 }
+  { "type": "countdown", "seconds": 5 }
+  { "type": "game_start", "fen", "turn", "white_clock", "black_clock" }
+  { "type": "move", ..., "fen", "turn", "white_clock", "black_clock" }
+  { "type": "game_over", "result", "reason", "white_clock", "black_clock" }
+  { "type": "error", "message" }
+  { "type": "player_disconnected", "role", "players_connected" }
   { "type": "draw_offered" }
-  { "type": "chat", "message": "...", "sender": "player" }
+  { "type": "chat", "message", "sender" }
 ```
 
-## Move Validation Flow
+## Bảo mật
 
-1. Client gửi move qua WebSocket
-2. Backend gọi `POST analysis-service/api/v1/validate` với FEN + move
-3. Analysis service validate bằng engine binary, trả về valid/invalid + new FEN
-4. Nếu valid: cập nhật state, broadcast cho tất cả clients
-5. Nếu invalid: gửi error cho client gửi move
+- **Auth**: JWT token qua query param → xác định player role (white/black/spectator)
+- **Turn enforcement**: chỉ player đúng lượt mới đi được
+- **Spectator isolation**: xem được, không tương tác được
+- **Draw offer**: chỉ gửi cho đối thủ, không broadcast
+
+## Multi-pod Support
+
+- Redis pub/sub: broadcast nước đi giữa các pod
+- Game state trong Redis: player reconnect vào pod khác vẫn OK
+- Clock trong Redis: không mất khi pod restart
 
 ## Board Components (Frontend)
 
-| Bộ môn | Component | Interaction |
-|--------|-----------|-------------|
-| Chess | react-chessboard | Drag & drop |
-| Xiangqi | react-xiangqiboard | Drag & drop |
-| Go | Custom SVG | Click to place |
-| Gomoku | Custom SVG (15×15 grid) | Click to place |
+| Bộ môn | Component | Style |
+|--------|-----------|-------|
+| Chess | react-chessboard | Kéo thả |
+| Xiangqi | react-xiangqiboard | Kéo thả |
+| Go | GoBoard (SVG) | Click đặt quân tròn |
+| Gomoku | GomokuBoard (SVG) | Click đặt X/O trên giao điểm |
 
-## Features
+## Room Timeout
 
-- Đồng hồ countdown (GameClock component, highlight đỏ < 30s)
-- EvalBar (thanh đánh giá, Chess)
-- Spectator mode (read-only board, real-time)
-- Spectator delay (configurable per tournament, anti-cheat)
-- Game replay (step through moves)
-- PGN export (gọi analysis service)
-- Chat in-game
-- Resign + draw offer/accept
-- Tournament integration (auto-create room from match)
+| Trạng thái | Timeout | Hành động |
+|---|---|---|
+| Waiting (không ai join) | 30 phút | Aborted |
+| Playing (bỏ ván) | 2 giờ | Draw |
+| All disconnect khi playing | 30s grace → clock timeout | Thua |
 
-## Database
+## API
 
-- `game_rooms`: match_id, white/black_player_id, status, game_type, time_control, fen, result, accuracy scores
-- `move_history`: room_id, move_number, notation, fen_after
+| Method | Endpoint | Mô tả |
+|--------|----------|--------|
+| POST | /games | Tạo phòng |
+| GET | /games/live | Danh sách phòng |
+| GET | /games/:id | Chi tiết phòng |
+| POST | /games/:id/join | Tham gia |
+| POST | /games/:id/cancel | Hủy phòng |
+| GET | /games/:id/moves | Lịch sử nước đi |
+| POST | /games/ai/start | Tạo ván AI (bot auto-join) |
+| WS | /ws/game/:id?token=JWT | Real-time gameplay |
