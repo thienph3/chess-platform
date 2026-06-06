@@ -201,7 +201,7 @@ function GamePlayPage() {
         {/* Board Area */}
         <Box sx={{ flex: 1 }}>
           {/* Top player (Black) */}
-          <PlayerBar memberId={room.black_player_id || ""} clock={blackClock} isActive={phase === "playing" && turn === "black"} color="black" />
+          <PlayerBar memberId={room.black_player_id || ""} clock={blackClock} isActive={phase === "playing" && turn === "black"} />
 
           {/* Countdown / Ready overlay */}
           {phase === "countdown" && (
@@ -226,7 +226,7 @@ function GamePlayPage() {
           )}
 
           {/* Bottom player (White) */}
-          <PlayerBar memberId={room.white_player_id} clock={whiteClock} isActive={phase === "playing" && turn === "white"} color="white" />
+          <PlayerBar memberId={room.white_player_id} clock={whiteClock} isActive={phase === "playing" && turn === "white"} />
         </Box>
 
         {/* Side Panel */}
@@ -302,7 +302,7 @@ function GamePlayPage() {
   );
 }
 
-function PlayerBar({ memberId, clock, isActive, color }: { memberId: string; clock: number; isActive: boolean; color: "white" | "black" }) {
+function PlayerBar({ memberId, clock, isActive }: { memberId: string; clock: number; isActive: boolean;  }) {
   const isLow = clock > 0 && clock < 30000;
   return (
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 1, borderRadius: 1, bgcolor: isActive ? "rgba(0,98,65,0.06)" : "transparent" }}>
