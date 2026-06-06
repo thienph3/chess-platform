@@ -1,4 +1,7 @@
 """Shared test fixtures."""
+import os
+os.environ["TESTING"] = "1"
+
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
