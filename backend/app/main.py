@@ -44,7 +44,7 @@ app.add_middleware(
 #         "/api/v1/auth/forgot-password": (3, 300),
 #     },
 # )
-)
+# )
 
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
