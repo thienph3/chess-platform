@@ -117,8 +117,17 @@ class GomokuEngine(BaseEngine):
         if not self._process or not self._process.stdout:
             return ""
         try:
-            line = await asyncio.wait_for(self._process.stdout.readline(), timeout)
-            return line.decode().strip()
+            deadline = asyncio.get_event_loop().time() + timeout
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    return ""
+                line = await asyncio.wait_for(self._process.stdout.readline(), remaining)
+                decoded = line.decode().strip()
+                # Skip MESSAGE/DEBUG/LOG lines, wait for actual response
+                if decoded.startswith("MESSAGE") or decoded.startswith("DEBUG") or decoded.startswith("LOG"):
+                    continue
+                return decoded
         except asyncio.TimeoutError:
             return ""
 
@@ -135,32 +144,31 @@ class GomokuEngine(BaseEngine):
             self._process = None
 
     async def analyze_position(self, position: str, depth: int = 15, num_variations: int = 1) -> PositionEvaluation:
-        """Get best move using TURN protocol."""
+        """Get best move using Gomocup protocol."""
         async with self._lock:
             await self._start()
 
             board = GomokuBoard()
             board.load_fen(position)
 
-            # Restart game
-            await self._send("RESTART")
-
             if not board.moves:
                 # Empty board — use BEGIN
                 await self._send("BEGIN")
             else:
-                # Replay moves using BOARD command
+                # Replay all moves via TURN commands (restart first)
+                await self._send("RESTART")
+                resp = await self._read_response(timeout=2.0)  # OK
+
+                # Use BOARD to send full state
                 await self._send("BOARD")
-                for i, (r, c) in enumerate(board.moves):
-                    # In Gomocup: 1=own (current player), 2=opponent
+                for r, c in board.moves:
                     color = board.grid[r][c]
+                    # Gomocup BOARD: 1=current player's stones, 2=opponent's stones
                     owner = 1 if color == board.turn else 2
-                    # Swap: the engine plays as current turn
-                    owner = 2 if color == board.turn else 1
                     await self._send(f"{c},{r},{owner}")
                 await self._send("DONE")
 
-            # Read response (col,row)
+            # Read response (col,row) — skips MESSAGE lines
             response = await self._read_response(timeout=5.0)
             best_move = ""
             if response and "," in response:
