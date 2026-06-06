@@ -24,6 +24,9 @@ profiles:
         context: ./frontend
         docker:
           dockerfile: Dockerfile
+          buildArgs:
+            VITE_BASE_PATH: /chess/
+            VITE_API_BASE_URL: /chess/api/v1
       - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/analysis-chess
         context: ./analysis
         docker:
