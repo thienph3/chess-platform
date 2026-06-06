@@ -15,7 +15,6 @@ profiles:
     build:
       local:
         useDockerCLI: true
-      push: true
       artifacts:
       - image: 783163248618.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/backend
         context: ./backend
@@ -55,7 +54,6 @@ profiles:
     build:
       local:
         useDockerCLI: true
-      push: true
       artifacts:
       - image: 905418376420.dkr.ecr.ap-southeast-1.amazonaws.com/chess-platform/backend
         context: ./backend
