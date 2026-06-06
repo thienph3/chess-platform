@@ -79,3 +79,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def start_background_tasks():
+    import asyncio
+    from app.modules.games.room_timeout import room_cleanup_loop
+    asyncio.create_task(room_cleanup_loop())
