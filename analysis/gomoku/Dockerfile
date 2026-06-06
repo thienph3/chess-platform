@@ -1,12 +1,12 @@
 FROM python:3.11-slim
 
 # Download Rapfi binary from GitHub releases (7z archive)
-RUN apt-get update && apt-get install -y curl ca-certificates p7zip-full && \
+RUN apt-get update && apt-get install -y curl ca-certificates p7zip-full libatomic1 && \
     curl -kL -o /tmp/rapfi.7z https://github.com/dhbloo/rapfi/releases/download/250615/Rapfi-engine.7z && \
     7z x /tmp/rapfi.7z -o/tmp/rapfi && \
     find /tmp/rapfi -name "pbrain-rapfi*" -type f | head -1 | xargs -I{} cp {} /usr/local/bin/rapfi && \
     chmod +x /usr/local/bin/rapfi && \
-    rm -rf /tmp/rapfi /tmp/rapfi.7z && apt-get purge -y p7zip-full && apt-get autoremove -y && \
+    rm -rf /tmp/rapfi /tmp/rapfi.7z && apt-get purge -y p7zip-full curl && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
