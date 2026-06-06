@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.modules.games.validation_client import get_initial_state, validate_move
+from app.modules.games import redis_store
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,11 @@ async def _handle_ready(room_key: str, websocket: WebSocket, room_id: uuid.UUID)
             **clocks,
         })
 
+        # Persist to Redis
+        await redis_store.save_game_state(room_key, room_states[room_key])
+        c = room_clocks[room_key]
+        await redis_store.save_clock(room_key, c["white_ms"], c["black_ms"], c["active"], c["last_move_time"], c["increment_ms"], True)
+
         # Start clock checker
         asyncio.create_task(_clock_checker(room_key, room_id))
 
@@ -181,6 +187,12 @@ async def _handle_move(room_key: str, message: dict, websocket: WebSocket, room_
     }
     await _broadcast(room_key, response)
 
+    # Persist state to Redis
+    await redis_store.save_game_state(room_key, state)
+    c = room_clocks.get(room_key)
+    if c:
+        await redis_store.save_clock(room_key, c["white_ms"], c["black_ms"], c["active"], c["last_move_time"], c["increment_ms"], c["started"])
+
     # Game over by rules
     if result.game_over:
         await _end_game(room_key, room_id, result.result or "draw", result.reason or "unknown")
@@ -198,6 +210,9 @@ async def _end_game(room_key: str, room_id: uuid.UUID, result: str, reason: str)
 
     clocks = _get_clocks(room_key)
     await _broadcast(room_key, {"type": "game_over", "result": result, "reason": reason, **clocks})
+
+    # Clean up Redis
+    await redis_store.delete_room(room_key)
 
     # Update DB
     asyncio.create_task(_save_game_result(room_id, result))
@@ -247,31 +262,41 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
 
     # Init clock from DB if not exists
     if room_key not in room_clocks:
-        from app.db.session import async_session_factory
-        from app.modules.games.repository import GameRepository
-        try:
-            async with async_session_factory() as db:
-                repo = GameRepository(db)
-                room = await repo.get_room_by_id(room_id)
-                if room:
-                    room_clocks[room_key] = {
-                        "white_ms": room.time_control * 1000,
-                        "black_ms": room.time_control * 1000,
-                        "increment_ms": room.increment * 1000,
-                        "active": "white",
-                        "last_move_time": 0,
-                        "started": False,
-                    }
-                    if room_key not in room_states:
-                        room_states[room_key] = {
-                            "fen": room.fen or "",
-                            "turn": "white",
-                            "game_over": False,
-                            "game_type": room.game_type,
+        # Try Redis first (survives pod restart)
+        redis_state = await redis_store.get_game_state(room_key)
+        redis_clock = await redis_store.get_clock(room_key)
+        if redis_state and redis_clock:
+            room_states[room_key] = redis_state
+            room_clocks[room_key] = redis_clock
+            if redis_state.get("started") and not redis_state.get("game_over"):
+                asyncio.create_task(_clock_checker(room_key, room_id))
+        else:
+            # Fallback: load from DB
+            from app.db.session import async_session_factory
+            from app.modules.games.repository import GameRepository
+            try:
+                async with async_session_factory() as db:
+                    repo = GameRepository(db)
+                    room = await repo.get_room_by_id(room_id)
+                    if room:
+                        room_clocks[room_key] = {
+                            "white_ms": room.time_control * 1000,
+                            "black_ms": room.time_control * 1000,
+                            "increment_ms": room.increment * 1000,
+                            "active": "white",
+                            "last_move_time": 0,
                             "started": False,
                         }
-        except Exception as exc:
-            logger.error("Failed to load room: %s", exc)
+                        if room_key not in room_states:
+                            room_states[room_key] = {
+                                "fen": room.fen or "",
+                                "turn": "white",
+                                "game_over": False,
+                                "game_type": room.game_type,
+                                "started": False,
+                            }
+            except Exception as exc:
+                logger.error("Failed to load room: %s", exc)
 
     # Send current state
     state = room_states.get(room_key)
