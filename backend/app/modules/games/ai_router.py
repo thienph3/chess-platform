@@ -19,7 +19,7 @@ from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.modules.games.models import GameRoom, GameRoomStatus, MoveHistory
 from app.modules.games.repository import GameRepository
-from app.modules.games.validation_client import get_initial_state, validate_move
+from app.modules.games.validation_client import ANALYSIS_URLS, get_initial_state, validate_move
 from app.shared.schemas import ResponseEnvelope
 
 logger = logging.getLogger(__name__)
@@ -28,13 +28,6 @@ router = APIRouter(prefix="/games/ai", tags=["Games AI"])
 
 # UUID cố định cho AI — không phải member thật
 AI_PLAYER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-
-ANALYSIS_URLS = {
-    "chess": settings.ANALYSIS_CHESS_URL,
-    "xiangqi": settings.ANALYSIS_XIANGQI_URL,
-    "go": settings.ANALYSIS_GO_URL,
-    "gomoku": settings.ANALYSIS_GOMOKU_URL,
-}
 
 DIFFICULTY_DEPTH = {"easy": 3, "medium": 10, "hard": 18}
 
