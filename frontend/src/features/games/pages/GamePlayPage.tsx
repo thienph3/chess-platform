@@ -1,10 +1,9 @@
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FlagIcon from "@mui/icons-material/Flag";
 import FlipCameraAndroidIcon from "@mui/icons-material/FlipCameraAndroid";
 import HandshakeIcon from "@mui/icons-material/Handshake";
 import ReplayIcon from "@mui/icons-material/Replay";
-import VolumeOffIcon from "@mui/icons-material/VolumeOff";
-import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -20,203 +19,281 @@ import { Chessboard } from "react-chessboard";
 import { useNavigate, useParams } from "react-router-dom";
 
 import PlayerName from "@/components/PlayerName";
-import { useSoundEffects } from "@/hooks/useSoundEffects";
+import { parseGomokuFen } from "@/utils/gameConstants";
 
 import GameChat from "../components/GameChat";
-import GameClock from "../components/GameClock";
 import GoBoard from "../components/GoBoard";
 import GomokuBoard from "../components/GomokuBoard";
 import XiangqiBoard from "../components/XiangqiBoard";
-import { formatCountdown, useCountdown } from "../hooks/useCountdown";
 import { useCreateGameRoom, useGameRoom } from "../hooks/useGames";
+
+type GamePhase = "waiting" | "ready" | "countdown" | "playing" | "finished";
+
+function formatClock(ms: number): string {
+  if (ms <= 0) return "0:00";
+  const totalSec = Math.ceil(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
+}
 
 function GamePlayPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: room, isLoading } = useGameRoom(id || "");
   const createMutation = useCreateGameRoom();
-  const { play: playSound, enabled: soundEnabled, toggle: toggleSound } = useSoundEffects();
-  const [game, setGame] = useState(new Chess());
+
+  // Game state
+  const [phase, setPhase] = useState<GamePhase>("waiting");
+  const [fen, setFen] = useState("");
+  const [turn, setTurn] = useState<"white" | "black">("white");
   const [moves, setMoves] = useState<string[]>([]);
   const [gameOver, setGameOver] = useState<string | null>(null);
-  const [turn, setTurn] = useState<"white" | "black">("white");
-  const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
-  const [xiangqiFen, setXiangqiFen] = useState("rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR");
-  const [goStones, setGoStones] = useState<{ row: number; col: number; color: "black" | "white" }[]>([]);
-  const [gomokuStones, setGomokuStones] = useState<{ row: number; col: number; color: "black" | "white" }[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
-  const { secondsLeft, isReady } = useCountdown(room?.scheduled_start || null);
+  const [readyCount, setReadyCount] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const [isReady, setIsReady] = useState(false);
 
+  // Clocks
+  const [whiteClock, setWhiteClock] = useState(0);
+  const [blackClock, setBlackClock] = useState(0);
+
+  // Board state
+  const [game, setGame] = useState(new Chess());
+  const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // WebSocket connection
   useEffect(() => {
     if (!id) return;
-    const ws = new WebSocket(`ws://localhost:8000/ws/game/${id}`);
+    const wsUrl = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws/game/${id}`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-      if (msg.type === "state") {
-        if (room?.game_type === "chess") setGame(new Chess(msg.fen));
-        else if (room?.game_type === "xiangqi") setXiangqiFen(msg.fen || xiangqiFen);
-        setTurn(msg.turn);
-      } else if (msg.type === "move") {
-        if (msg.fen && room?.game_type === "chess") setGame(new Chess(msg.fen));
-        else if (msg.fen && room?.game_type === "xiangqi") setXiangqiFen(msg.fen);
-        setTurn(msg.turn);
-        setMoves((prev) => [...prev, msg.notation || `${msg.from}${msg.to}`]);
-        playSound(msg.capture ? "capture" : "move");
-      } else if (msg.type === "game_over") {
-        const results: Record<string, string> = { white_win: "Trắng thắng", black_win: "Đen thắng", draw: "Hòa" };
-        const reasons: Record<string, string> = { checkmate: "Chiếu hết", stalemate: "Hết nước", agreement: "Đồng ý hòa" };
-        setGameOver(`${results[msg.result] || msg.result} — ${reasons[msg.reason] || msg.reason}`);
-        playSound("gameOver");
-      } else if (msg.type === "resign") {
-        setGameOver("Đối thủ đầu hàng — Bạn thắng!");
-        playSound("gameOver");
-      } else if (msg.type === "check") {
-        playSound("check");
+
+      switch (msg.type) {
+        case "waiting":
+        case "room_info":
+          setPhase("waiting");
+          if (msg.white_clock) setWhiteClock(msg.white_clock);
+          if (msg.black_clock) setBlackClock(msg.black_clock);
+          break;
+
+        case "ready_status":
+          setReadyCount(msg.ready_count);
+          setPhase("ready");
+          break;
+
+        case "countdown":
+          setPhase("countdown");
+          setCountdown(msg.seconds);
+          break;
+
+        case "game_start":
+          setPhase("playing");
+          setFen(msg.fen);
+          setTurn(msg.turn);
+          setWhiteClock(msg.white_clock);
+          setBlackClock(msg.black_clock);
+          if (room?.game_type === "chess") setGame(new Chess(msg.fen));
+          break;
+
+        case "state":
+          // Reconnect — game already in progress
+          setPhase(msg.started ? "playing" : "waiting");
+          setFen(msg.fen);
+          setTurn(msg.turn);
+          if (msg.white_clock) setWhiteClock(msg.white_clock);
+          if (msg.black_clock) setBlackClock(msg.black_clock);
+          if (room?.game_type === "chess" && msg.fen) setGame(new Chess(msg.fen));
+          break;
+
+        case "move":
+          setFen(msg.fen);
+          setTurn(msg.turn);
+          setWhiteClock(msg.white_clock);
+          setBlackClock(msg.black_clock);
+          if (room?.game_type === "chess" && msg.fen) setGame(new Chess(msg.fen));
+          setMoves((prev) => [...prev, msg.notation || `${msg.row ?? ""},${msg.col ?? ""}`]);
+          break;
+
+        case "game_over":
+          setPhase("finished");
+          setGameOver(`${msg.result} — ${msg.reason}`);
+          if (msg.white_clock) setWhiteClock(msg.white_clock);
+          if (msg.black_clock) setBlackClock(msg.black_clock);
+          break;
+
+        case "player_disconnected":
+          // Could show notification
+          break;
+
+        case "error":
+          // Could show snackbar
+          break;
       }
     };
+
+    ws.onopen = () => {
+      if (room?.game_type) {
+        ws.send(JSON.stringify({ type: "init", game_type: room.game_type }));
+      }
+    };
+
     return () => { ws.close(); };
   }, [id, room?.game_type]);
 
+  // Actions
+  const handleReady = () => {
+    wsRef.current?.send(JSON.stringify({ type: "ready" }));
+    setIsReady(true);
+  };
+
+  const handleMove = useCallback((move: Record<string, unknown>) => {
+    if (phase !== "playing") return;
+    wsRef.current?.send(JSON.stringify({ type: "move", ...move }));
+  }, [phase]);
+
   const handleChessDrop = useCallback(({ sourceSquare, targetSquare }: { piece: unknown; sourceSquare: string; targetSquare: string | null }) => {
-    if (!targetSquare) return false;
-    const copy = new Chess(game.fen());
-    const move = copy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
-    if (!move) return false;
-    wsRef.current?.send(JSON.stringify({ type: "move", from: sourceSquare, to: targetSquare, promotion: "q" }));
+    if (!targetSquare || phase !== "playing") return false;
+    handleMove({ from: sourceSquare, to: targetSquare, promotion: "q" });
     return true;
-  }, [game]);
+  }, [phase, handleMove]);
 
   const handleXiangqiMove = useCallback((from: string, to: string) => {
-    wsRef.current?.send(JSON.stringify({ type: "move", from, to, notation: `${from}${to}` }));
+    if (phase !== "playing") return false;
+    handleMove({ from, to });
     return true;
-  }, []);
+  }, [phase, handleMove]);
 
   const handleGoPlace = useCallback((row: number, col: number) => {
-    const notation = `${String.fromCharCode(97 + col)}${row + 1}`;
-    wsRef.current?.send(JSON.stringify({ type: "move", notation, row, col }));
-    setGoStones((prev) => [...prev, { row, col, color: turn === "white" ? "white" : "black" }]);
-    setMoves((prev) => [...prev, notation]);
+    if (phase !== "playing") return false;
+    handleMove({ row, col, notation: `${String.fromCharCode(97 + col)}${row + 1}` });
     return true;
-  }, [turn]);
+  }, [phase, handleMove]);
 
   const handleGomokuPlace = useCallback((row: number, col: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "move", row, col }));
-    setGomokuStones((prev) => [...prev, { row, col, color: turn === "white" ? "white" : "black" }]);
-    setMoves((prev) => [...prev, `${row},${col}`]);
-  }, [turn]);
+    if (phase !== "playing") return;
+    handleMove({ row, col });
+  }, [phase, handleMove]);
 
-  // Fix 73: Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "f" || e.key === "F") {
-        setBoardOrientation((prev) => (prev === "white" ? "black" : "white"));
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const handleResign = () => { setGameOver("Bạn đã đầu hàng"); wsRef.current?.send(JSON.stringify({ type: "resign" })); };
+  const handleResign = () => wsRef.current?.send(JSON.stringify({ type: "resign" }));
+  const handleDrawOffer = () => wsRef.current?.send(JSON.stringify({ type: "draw_offer" }));
 
   const handleRematch = async () => {
     if (!room) return;
-    // Tạo phòng mới với cùng settings, đổi màu quân
-    const newRoom = await createMutation.mutateAsync({
-      game_type: room.game_type,
-      time_control: room.time_control,
-      increment: room.increment || 0,
-    });
+    const newRoom = await createMutation.mutateAsync({ game_type: room.game_type, time_control: room.time_control, increment: room.increment || 0 });
     navigate(`/play/${newRoom.id}`);
   };
 
-  if (isLoading) return <Box p={3}><Skeleton variant="rectangular" height={500} /></Box>;
+  if (isLoading) return <Box p={3}><Skeleton variant="rectangular" height={500} sx={{ borderRadius: 2 }} /></Box>;
   if (!room) return <Box p={3}><Typography>Phòng không tồn tại</Typography></Box>;
+
+  const allowInteraction = phase === "playing" && !gameOver;
 
   return (
     <Box>
       <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/play")} size="small" sx={{ mb: 1 }}>Lobby</Button>
-      <Stack direction={{ xs: "column", md: "row" }} spacing={0} alignItems="flex-start">
+
+      <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="flex-start">
         {/* Board Area */}
-        <Box>
-          {/* Countdown trước khi bắt đầu */}
-          {!isReady && secondsLeft > 0 && (
-            <Chip label={`Bắt đầu sau ${formatCountdown(secondsLeft)}`} color="warning" sx={{ mb: 1, fontFamily: "monospace", fontWeight: 600 }} />
+        <Box sx={{ flex: 1 }}>
+          {/* Top player (Black) */}
+          <PlayerBar memberId={room.black_player_id || ""} clock={blackClock} isActive={phase === "playing" && turn === "black"} color="black" />
+
+          {/* Countdown / Ready overlay */}
+          {phase === "countdown" && (
+            <Box sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="h2" fontWeight={800} color="primary">{countdown}</Typography>
+              <Typography variant="body2" color="text.secondary">Bắt đầu sau...</Typography>
+            </Box>
           )}
 
-          {/* Opponent bar (black) */}
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75, mb: 0.5 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <PlayerName memberId={room.black_player_id || ""} />
-            </Stack>
-            <GameClock initialTime={room.time_control} isActive={isReady && !gameOver && turn === "black"} color="black" increment={room.increment || 0} />
-          </Stack>
-
           {/* Board */}
-          <BoardRenderer gameType={room.game_type} chessFen={game.fen()} xiangqiFen={xiangqiFen} goStones={goStones} gomokuStones={gomokuStones} gameOver={!!gameOver} onChessDrop={handleChessDrop} onXiangqiMove={handleXiangqiMove} onGoPlace={handleGoPlace} onGomokuPlace={handleGomokuPlace} boardOrientation={boardOrientation} allowDragging={isReady && !gameOver} />
+          {phase !== "countdown" && (
+            <Box sx={{ my: 1 }}>
+              {room.game_type === "chess" && (
+                <Box sx={{ width: { xs: 320, sm: 400, md: 480 } }}>
+                  <Chessboard options={{ position: game.fen(), onPieceDrop: handleChessDrop, allowDragging: allowInteraction, boardOrientation }} />
+                </Box>
+              )}
+              {room.game_type === "xiangqi" && <XiangqiBoard position={fen} onMove={handleXiangqiMove} allowDragging={allowInteraction} />}
+              {room.game_type === "go" && <GoBoard size={19} stones={[]} onPlace={handleGoPlace} allowPlacing={allowInteraction} />}
+              {room.game_type === "gomoku" && <GomokuBoard stones={parseGomokuFen(fen)} onPlace={handleGomokuPlace} allowPlacing={allowInteraction} />}
+            </Box>
+          )}
 
-          {/* Player bar (white) */}
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75, mt: 0.5 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <PlayerName memberId={room.white_player_id} />
-            </Stack>
-            <GameClock initialTime={room.time_control} isActive={isReady && !gameOver && turn === "white"} color="white" increment={room.increment || 0} />
-          </Stack>
+          {/* Bottom player (White) */}
+          <PlayerBar memberId={room.white_player_id} clock={whiteClock} isActive={phase === "playing" && turn === "white"} color="white" />
         </Box>
 
         {/* Side Panel */}
-        <Card sx={{ width: { xs: "100%", md: 300 }, ml: { md: 2 }, mt: { xs: 2, md: 0 }, height: { md: 560 }, display: "flex", flexDirection: "column" }}>
+        <Card sx={{ width: { xs: "100%", md: 300 }, display: "flex", flexDirection: "column" }}>
           <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column", p: 2 }}>
-            {/* Move list */}
-            <Box sx={{ flex: 1, overflow: "auto", mb: 2 }}>
-              {moves.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4 }}>Chưa có nước đi</Typography>
-              ) : (
-                moves.map((m, i) => {
-                  if (i % 2 !== 0) return null;
-                  const num = Math.floor(i / 2) + 1;
-                  return (
-                    <Stack key={num} direction="row" sx={{ py: 0.5, px: 1, bgcolor: num % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent", borderRadius: 1 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ width: 32, fontFamily: "monospace", fontSize: "0.8rem" }}>{num}.</Typography>
-                      <Typography variant="body2" sx={{ width: 70, fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 500, bgcolor: moves.length === i + 1 ? "rgba(0,101,62,0.1)" : "transparent", borderRadius: 0.5, px: 0.5 }}>{m}</Typography>
-                      <Typography variant="body2" sx={{ width: 70, fontFamily: "monospace", fontSize: "0.8rem", bgcolor: moves.length === i + 2 ? "rgba(0,101,62,0.1)" : "transparent", borderRadius: 0.5, px: 0.5 }}>{moves[i + 1] || ""}</Typography>
-                    </Stack>
-                  );
-                })
-              )}
-              {gameOver && (
-                <Typography variant="body2" fontWeight={700} sx={{ mt: 1, py: 1, fontFamily: "monospace", textAlign: "center", bgcolor: "rgba(0,0,0,0.04)", borderRadius: 1 }}>
-                  {gameOver}
+            {/* Ready phase */}
+            {(phase === "waiting" || phase === "ready") && (
+              <Box sx={{ textAlign: "center", py: 4 }}>
+                <Typography variant="body1" mb={2}>Sẵn sàng: {readyCount}/2</Typography>
+                <Button
+                  variant="contained" size="large" fullWidth
+                  startIcon={<CheckCircleIcon />}
+                  onClick={handleReady}
+                  disabled={isReady}
+                  color={isReady ? "success" : "primary"}
+                >
+                  {isReady ? "Đã sẵn sàng" : "Sẵn sàng"}
+                </Button>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                  Cả 2 người chơi cần nhấn "Sẵn sàng" để bắt đầu
                 </Typography>
-              )}
-            </Box>
+              </Box>
+            )}
+
+            {/* Move list */}
+            {(phase === "playing" || phase === "finished") && (
+              <Box sx={{ flex: 1, overflow: "auto", maxHeight: { md: 350 }, mb: 2 }}>
+                {moves.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4 }}>Chưa có nước đi</Typography>
+                ) : (
+                  moves.map((m, i) => {
+                    if (i % 2 !== 0) return null;
+                    const num = Math.floor(i / 2) + 1;
+                    return (
+                      <Stack key={num} direction="row" sx={{ py: 0.5, px: 1, bgcolor: num % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent", borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ width: 32, fontFamily: "monospace", fontSize: "0.8rem" }}>{num}.</Typography>
+                        <Typography variant="body2" sx={{ width: 70, fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 500 }}>{m}</Typography>
+                        <Typography variant="body2" sx={{ width: 70, fontFamily: "monospace", fontSize: "0.8rem" }}>{moves[i + 1] || ""}</Typography>
+                      </Stack>
+                    );
+                  })
+                )}
+                {gameOver && (
+                  <Typography variant="body2" fontWeight={700} sx={{ mt: 1, py: 1, fontFamily: "monospace", textAlign: "center", bgcolor: "rgba(0,0,0,0.04)", borderRadius: 1 }}>
+                    {gameOver}
+                  </Typography>
+                )}
+              </Box>
+            )}
 
             {/* Actions */}
-            <Stack spacing={1}>
-              {!gameOver && (
+            {phase === "playing" && !gameOver && (
+              <Stack spacing={1}>
                 <Stack direction="row" spacing={1}>
                   <Button size="small" variant="outlined" color="error" startIcon={<FlagIcon />} fullWidth onClick={handleResign}>Đầu hàng</Button>
-                  <Button size="small" variant="outlined" startIcon={<HandshakeIcon />} fullWidth onClick={() => wsRef.current?.send(JSON.stringify({ type: "draw_offer" }))}>Cầu hòa</Button>
+                  <Button size="small" variant="outlined" startIcon={<HandshakeIcon />} fullWidth onClick={handleDrawOffer}>Cầu hòa</Button>
                 </Stack>
-              )}
-              {!gameOver && (
-                <Stack direction="row" spacing={1}>
-                  <IconButton size="small" onClick={toggleSound}>{soundEnabled ? <VolumeUpIcon /> : <VolumeOffIcon />}</IconButton>
-                  <IconButton size="small" onClick={() => setBoardOrientation((prev) => prev === "white" ? "black" : "white")}><FlipCameraAndroidIcon /></IconButton>
-                </Stack>
-              )}
-              {gameOver && (
-                <Stack direction="row" spacing={1}>
-                  <Button size="small" variant="contained" startIcon={<ReplayIcon />} fullWidth onClick={handleRematch} disabled={createMutation.isPending}>Chơi lại</Button>
-                  <IconButton size="small" onClick={toggleSound}>{soundEnabled ? <VolumeUpIcon /> : <VolumeOffIcon />}</IconButton>
-                  <IconButton size="small" onClick={() => setBoardOrientation((prev) => prev === "white" ? "black" : "white")}><FlipCameraAndroidIcon /></IconButton>
-                </Stack>
-              )}
-            </Stack>
+                <IconButton size="small" onClick={() => setBoardOrientation((p) => p === "white" ? "black" : "white")}><FlipCameraAndroidIcon /></IconButton>
+              </Stack>
+            )}
+            {phase === "finished" && (
+              <Button size="small" variant="contained" startIcon={<ReplayIcon />} fullWidth onClick={handleRematch} disabled={createMutation.isPending}>Chơi lại</Button>
+            )}
 
             {/* Chat */}
             <Box sx={{ mt: 2 }}>
-              <GameChat wsRef={wsRef} disabled={!!gameOver} />
+              <GameChat wsRef={wsRef} disabled={phase === "finished"} />
             </Box>
           </CardContent>
         </Card>
@@ -225,35 +302,21 @@ function GamePlayPage() {
   );
 }
 
-interface BoardRendererProps {
-  gameType: string;
-  chessFen: string;
-  xiangqiFen: string;
-  goStones: { row: number; col: number; color: "black" | "white" }[];
-  gomokuStones: { row: number; col: number; color: "black" | "white" }[];
-  gameOver: boolean;
-  onChessDrop: (args: { piece: unknown; sourceSquare: string; targetSquare: string | null }) => boolean;
-  onXiangqiMove: (from: string, to: string) => boolean;
-  onGoPlace: (row: number, col: number) => boolean;
-  onGomokuPlace: (row: number, col: number) => void;
-  boardOrientation: "white" | "black";
-  allowDragging: boolean;
-}
-
-function BoardRenderer({ gameType, chessFen, xiangqiFen, goStones, gomokuStones, onChessDrop, onXiangqiMove, onGoPlace, onGomokuPlace, boardOrientation, allowDragging }: BoardRendererProps) {
-  if (gameType === "xiangqi") {
-    return <XiangqiBoard position={xiangqiFen} onMove={onXiangqiMove} allowDragging={allowDragging} />;
-  }
-  if (gameType === "go") {
-    return <GoBoard size={19} stones={goStones} onPlace={onGoPlace} allowPlacing={allowDragging} />;
-  }
-  if (gameType === "gomoku") {
-    return <GomokuBoard stones={gomokuStones} onPlace={onGomokuPlace} allowPlacing={allowDragging} />;
-  }
+function PlayerBar({ memberId, clock, isActive, color }: { memberId: string; clock: number; isActive: boolean; color: "white" | "black" }) {
+  const isLow = clock > 0 && clock < 30000;
   return (
-    <Box sx={{ width: { xs: 300, sm: 360, md: 480 } }}>
-      <Chessboard options={{ position: chessFen, onPieceDrop: onChessDrop, allowDragging, boardOrientation }} />
-    </Box>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 1, borderRadius: 1, bgcolor: isActive ? "rgba(0,98,65,0.06)" : "transparent" }}>
+      <PlayerName memberId={memberId} />
+      <Chip
+        label={formatClock(clock)}
+        size="small"
+        sx={{
+          fontFamily: "monospace", fontWeight: 700, fontSize: "0.9rem", minWidth: 70,
+          bgcolor: isActive ? "primary.main" : "#f5f5f5",
+          color: isActive ? "white" : (isLow ? "error.main" : "text.primary"),
+        }}
+      />
+    </Stack>
   );
 }
 
