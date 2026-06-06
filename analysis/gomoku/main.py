@@ -2,11 +2,9 @@
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from shared.app_factory import create_analysis_app
 from shared.schemas import (
     InitialStateResponse,
     SuggestMoveRequest,
@@ -17,16 +15,8 @@ from shared.schemas import (
 
 from engine import GomokuBoard, GomokuEngine
 
-app = FastAPI(title="VCC Gomoku Analysis", docs_url="/api/docs")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 engine = GomokuEngine()
-
-
-@app.get("/health")
-async def health():
-    available = await engine.is_available()
-    return {"status": "ok" if available else "degraded", "engine": "rapfi"}
+app = create_analysis_app("VCC Gomoku Analysis", "rapfi", engine.is_available)
 
 
 @app.get("/api/v1/initial-state", response_model=InitialStateResponse)
@@ -54,7 +44,7 @@ async def validate_move(req: ValidateMoveRequest):
 
     if board.check_win(row, col):
         game_over = True
-        winner = 3 - board.turn  # player who just moved
+        winner = 3 - board.turn
         result = "white_win" if winner == 2 else "black_win"
         reason = "five_in_a_row"
     elif board.is_full():
