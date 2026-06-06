@@ -54,6 +54,17 @@ async def join_game_room(
     return ResponseEnvelope(data=room, message="Tham gia phòng thành công")
 
 
+@router.post("/{room_id}/cancel", response_model=ResponseEnvelope[GameRoomResponse])
+async def cancel_game_room(
+    room_id: uuid.UUID,
+    current_user: UserResponse = Depends(get_current_user),
+    service: GameService = Depends(get_game_service),
+):
+    """Hủy phòng: nếu chưa có đối thủ → hủy bình thường, nếu đang chơi → tự động đầu hàng."""
+    room = await service.cancel_room(room_id, current_user.member_id)
+    return ResponseEnvelope(data=room, message="Đã hủy phòng")
+
+
 @router.post("/from-match/{match_id}", response_model=ResponseEnvelope[GameRoomResponse], status_code=status.HTTP_201_CREATED)
 async def create_room_from_match(
     match_id: uuid.UUID,

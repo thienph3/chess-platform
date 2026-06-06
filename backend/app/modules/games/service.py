@@ -46,6 +46,27 @@ class GameService:
         room = await self.repository.update_room(room)
         return GameRoomResponse.model_validate(room)
 
+    async def cancel_room(self, room_id: uuid.UUID, player_id: uuid.UUID) -> GameRoomResponse:
+        """Hủy phòng: waiting → aborted, playing → đầu hàng (người hủy thua)."""
+        room = await self.repository.get_room_by_id(room_id)
+        if not room:
+            raise NotFoundException("Phòng chơi không tồn tại")
+        if room.status == GameRoomStatus.finished:
+            raise AppException("Ván đấu đã kết thúc", status_code=400)
+
+        if room.status == GameRoomStatus.waiting:
+            room.status = GameRoomStatus.aborted
+        elif room.status == GameRoomStatus.playing:
+            room.status = GameRoomStatus.finished
+            # Người hủy thua
+            if room.white_player_id == player_id:
+                room.result = "black_win"
+            else:
+                room.result = "white_win"
+
+        room = await self.repository.update_room(room)
+        return GameRoomResponse.model_validate(room)
+
     async def make_move(
         self, room_id: uuid.UUID, notation: str, fen_after: str | None = None
     ) -> MoveHistoryResponse:
