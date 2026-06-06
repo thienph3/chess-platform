@@ -17,6 +17,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from app.modules.games.validation_client import get_initial_state, validate_move
 from app.modules.games import redis_store
+from app.modules.games import pubsub
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,16 @@ room_clocks: dict[str, dict[str, Any]] = {}
 # --- Helpers ---
 
 async def _broadcast(room_key: str, message: dict) -> None:
+    """Broadcast to local connections + publish to other pods via Redis."""
     msg = json.dumps(message)
     for conn in room_connections[room_key]:
         try:
             await conn.ws.send_text(msg)
         except Exception:
             pass
+    # Publish to other pods (they'll relay to their local clients)
+    message["_from_pod"] = True  # Mark to avoid re-broadcast loop
+    await pubsub.publish(room_key, message)
 
 
 async def _send_to_players(room_key: str, message: dict) -> None:
@@ -332,6 +337,19 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID, token: str = 
     conn = PlayerConnection(websocket, player_id, role)
     room_connections[room_key].append(conn)
 
+    # Subscribe to pub/sub for messages from other pods
+    async def _relay_from_pubsub(msg: dict) -> None:
+        if msg.pop("_from_pod", False):
+            # Relay to local clients (already sent by originating pod)
+            data = json.dumps(msg)
+            for c in room_connections.get(room_key, []):
+                try:
+                    await c.ws.send_text(data)
+                except Exception:
+                    pass
+
+    await pubsub.subscribe(room_key, _relay_from_pubsub)
+
     # Send current state
     state = room_states.get(room_key)
     clocks = _get_clocks(room_key)
@@ -382,6 +400,7 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID, token: str = 
 
     except WebSocketDisconnect:
         room_connections[room_key].remove(conn)
+        await pubsub.unsubscribe(room_key, _relay_from_pubsub)
         if conn.player_id:
             room_ready[room_key].discard(conn.player_id)
 
