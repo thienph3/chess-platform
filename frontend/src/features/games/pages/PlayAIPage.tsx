@@ -25,6 +25,20 @@ import GomokuBoard from "../components/GomokuBoard";
 import XiangqiBoard from "../components/XiangqiBoard";
 import { Difficulty, GameType, ColorChoice, usePlayAI } from "../hooks/usePlayAI";
 
+function parseGomokuFen(fen: string): { row: number; col: number; color: "black" | "white" }[] {
+  if (!fen || fen === ";1" || fen === ";2") return [];
+  const stones: { row: number; col: number; color: "black" | "white" }[] = [];
+  const parts = fen.split(";");
+  if (!parts[0]) return [];
+  for (const triple of parts[0].split(",")) {
+    const nums = triple.split(".");
+    if (nums.length === 3) {
+      stones.push({ row: parseInt(nums[0]), col: parseInt(nums[1]), color: nums[2] === "1" ? "black" : "white" });
+    }
+  }
+  return stones;
+}
+
 const GAME_OPTIONS: { value: GameType; label: string }[] = [
   { value: "chess", label: "Cờ vua" },
   { value: "xiangqi", label: "Cờ tướng" },
@@ -216,7 +230,7 @@ function PlayAIPage() {
           )}
           {gameType === "xiangqi" && <XiangqiBoard position={state.fen} onMove={handleXiangqiMove} allowDragging={!isThinking && !state.gameOver} />}
           {gameType === "go" && <GoBoard size={19} stones={[]} onPlace={handleGoPlace} allowPlacing={!isThinking && !state.gameOver} />}
-          {gameType === "gomoku" && <GomokuBoard stones={[]} onPlace={handleGomokuPlace} allowPlacing={!isThinking && !state.gameOver} />}
+          {gameType === "gomoku" && <GomokuBoard stones={parseGomokuFen(state.fen)} onPlace={handleGomokuPlace} allowPlacing={!isThinking && !state.gameOver} />}
 
           {/* Bottom bar (me) */}
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75, mt: 0.5 }}>
