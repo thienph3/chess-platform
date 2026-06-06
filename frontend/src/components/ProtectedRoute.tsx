@@ -1,6 +1,5 @@
 import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
-import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import { Navigate, Outlet } from "react-router-dom";
 
 import { useAuthContext } from "@/features/auth/context/AuthContext";
@@ -10,12 +9,8 @@ export default function ProtectedRoute() {
 
   if (isLoading) {
     return (
-      <Box p={3}>
-        <Stack spacing={2}>
-          <Skeleton variant="rectangular" height={60} />
-          <Skeleton variant="rectangular" height={200} />
-          <Skeleton variant="rectangular" height={100} />
-        </Stack>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", bgcolor: "#FAFAF7" }}>
+        <CircularProgress size={40} sx={{ color: "#00653E" }} />
       </Box>
     );
   }
