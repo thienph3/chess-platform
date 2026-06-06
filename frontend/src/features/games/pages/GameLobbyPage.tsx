@@ -101,7 +101,6 @@ function RoomCard({ room, onJoin }: { room: IGameRoom; onJoin: (r: IGameRoom) =>
       <Stack direction="row" alignItems="center" justifyContent="center" sx={{ px: 2, py: 1.5 }}>
         <MiniBoardPreview gameType={room.game_type} fen={room.fen} />
         <Stack sx={{ ml: 2 }} spacing={0.5}>
-          <Typography variant="subtitle2" fontWeight={700}>{GAME_LABELS[room.game_type]}</Typography>
           <Chip label={timeLabel} size="small" variant="outlined" sx={{ fontSize: "0.7rem", height: 20, width: "fit-content" }} />
           {isWaiting && <Button size="small" variant="contained" sx={{ fontSize: "0.7rem", py: 0.25, mt: 0.5 }}>Tham gia</Button>}
           {!isWaiting && <Chip icon={<VisibilityIcon />} label="Xem" size="small" variant="outlined" sx={{ height: 20, fontSize: "0.65rem" }} />}
