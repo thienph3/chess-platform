@@ -30,7 +30,7 @@ import { useAcceptChallenge, useDeclineChallenge, usePendingChallenges } from ".
 import { useCreateGameRoom, useJoinGameRoom, useLiveGames } from "../hooks/useGames";
 import { IGameRoom } from "../types";
 
-const GAME_LABELS: Record<string, string> = { chess: "Cờ vua", xiangqi: "Cờ tướng", go: "Cờ vây", gomoku: "Cờ caro" };
+import { GAME_LABELS } from "@/utils/gameConstants";
 const GAME_COLORS: Record<string, string> = { chess: "#1a1a1a", xiangqi: "#c0392b", go: "#d4a574", gomoku: "#DCB35C" };
 const STATUS_LABELS: Record<string, string> = { waiting: "Chờ đối thủ", playing: "Đang chơi" };
 

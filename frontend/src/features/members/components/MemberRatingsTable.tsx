@@ -5,12 +5,7 @@ import { DataGrid, GridColDef } from "@mui/x-data-grid";
 
 import { useMemberRatings } from "@/features/ratings/hooks/useRatingHistory";
 
-const GAME_TYPE_LABELS: Record<string, string> = {
-  chess: "Cờ vua",
-  xiangqi: "Cờ tướng",
-  go: "Cờ vây",
-  gomoku: "Cờ caro",
-};
+import { GAME_LABELS as GAME_TYPE_LABELS } from "@/utils/gameConstants";
 
 const TIME_FORMAT_LABELS: Record<string, string> = {
   bullet: "Bullet",

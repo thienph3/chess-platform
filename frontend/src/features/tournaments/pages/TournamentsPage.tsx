@@ -29,12 +29,7 @@ const STATUS_LABELS: Record<TournamentStatus, string> = {
   cancelled: "Đã hủy",
 };
 
-const GAME_TYPE_LABELS: Record<GameType, string> = {
-  chess: "Cờ vua",
-  xiangqi: "Cờ tướng",
-  go: "Cờ vây",
-  gomoku: "Cờ caro",
-};
+import { GAME_LABELS as GAME_TYPE_LABELS } from "@/utils/gameConstants";
 
 const columns: GridColDef[] = [
   { field: "name", headerName: "Tên giải đấu", flex: 1 },

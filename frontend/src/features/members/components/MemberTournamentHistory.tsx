@@ -20,12 +20,7 @@ interface IMemberTournament {
   created_at: string;
 }
 
-const GAME_TYPE_LABELS: Record<string, string> = {
-  chess: "Cờ vua",
-  xiangqi: "Cờ tướng",
-  go: "Cờ vây",
-  gomoku: "Cờ caro",
-};
+import { GAME_LABELS as GAME_TYPE_LABELS } from "@/utils/gameConstants";
 
 const STATUS_LABELS: Record<string, string> = {
   registered: "Đã đăng ký",

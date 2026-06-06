@@ -25,19 +25,7 @@ import GomokuBoard from "../components/GomokuBoard";
 import XiangqiBoard from "../components/XiangqiBoard";
 import { Difficulty, GameType, ColorChoice, usePlayAI } from "../hooks/usePlayAI";
 
-function parseGomokuFen(fen: string): { row: number; col: number; color: "black" | "white" }[] {
-  if (!fen || fen === ";1" || fen === ";2") return [];
-  const stones: { row: number; col: number; color: "black" | "white" }[] = [];
-  const parts = fen.split(";");
-  if (!parts[0]) return [];
-  for (const triple of parts[0].split(",")) {
-    const nums = triple.split(".");
-    if (nums.length === 3) {
-      stones.push({ row: parseInt(nums[0]), col: parseInt(nums[1]), color: nums[2] === "1" ? "black" : "white" });
-    }
-  }
-  return stones;
-}
+import { parseGomokuFen } from "@/utils/gameConstants";
 
 const GAME_OPTIONS: { value: GameType; label: string }[] = [
   { value: "chess", label: "Cờ vua" },

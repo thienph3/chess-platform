@@ -17,7 +17,7 @@ import { useExportPgn } from "../hooks/useExportPgn";
 import { useGameHistory, useReviewGame } from "../hooks/useGameHistory";
 import { IGameRoom } from "../types";
 
-const GAME_LABELS: Record<string, string> = { chess: "Cờ vua", xiangqi: "Cờ tướng", go: "Cờ vây", gomoku: "Cờ caro" };
+import { GAME_LABELS } from "@/utils/gameConstants";
 const RESULT_LABELS: Record<string, string> = { white_win: "Trắng thắng", black_win: "Đen thắng", draw: "Hòa" };
 const RESULT_COLORS: Record<string, "success" | "error" | "default" | "warning"> = {
   white_win: "success", black_win: "error", draw: "default", pending: "warning",
