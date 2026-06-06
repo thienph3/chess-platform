@@ -56,6 +56,32 @@ def _cleanup_room(room_key: str) -> None:
     room_states.pop(room_key, None)
 
 
+async def _abort_abandoned_room(room_id: uuid.UUID) -> None:
+    """Mark room as aborted/draw if all players disconnected."""
+    from app.db.session import async_session_factory
+    from app.modules.games.models import GameRoomStatus
+    from app.modules.games.repository import GameRepository
+
+    await asyncio.sleep(30)  # Grace period — wait 30s in case they reconnect
+
+    # Check if anyone reconnected
+    room_key = str(room_id)
+    if room_key in rooms and rooms[room_key]:
+        return  # Someone reconnected
+
+    try:
+        async with async_session_factory() as db:
+            repo = GameRepository(db)
+            room = await repo.get_room_by_id(room_id)
+            if room and room.status == GameRoomStatus.playing:
+                room.status = GameRoomStatus.finished
+                room.result = "draw"
+                await db.commit()
+                logger.info("Room %s abandoned — marked as draw", room_id)
+    except Exception as exc:
+        logger.error("Failed to abort abandoned room %s: %s", room_id, exc)
+
+
 async def _init_room(room_key: str, game_type: str) -> dict[str, Any]:
     """Khởi tạo room state từ analysis service."""
     state = await get_initial_state(game_type)
@@ -195,3 +221,5 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
         if not rooms[room_key]:
             del rooms[room_key]
             _cleanup_room(room_key)
+            # All players disconnected — abort if still playing
+            asyncio.create_task(_abort_abandoned_room(room_id))
