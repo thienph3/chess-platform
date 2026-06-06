@@ -31,35 +31,49 @@ import { useCreateGameRoom, useJoinGameRoom, useLiveGames } from "../hooks/useGa
 import { IGameRoom } from "../types";
 
 import { GAME_LABELS } from "@/utils/gameConstants";
-const GAME_COLORS: Record<string, string> = { chess: "#1a1a1a", xiangqi: "#c0392b", go: "#d4a574", gomoku: "#DCB35C" };
 const STATUS_LABELS: Record<string, string> = { waiting: "Chờ đối thủ", playing: "Đang chơi" };
 
-function MiniBoardPreview({ gameType }: { gameType: string }) {
-  const size = 5;
-  const cellSize = 12;
+function MiniBoardPreview({ gameType, fen }: { gameType: string; fen: string | null }) {
+  const size = 8;
+  const cellSize = 16;
   const pad = 4;
   const svgSize = (size - 1) * cellSize + pad * 2;
-  const bg = GAME_COLORS[gameType] || "#DCB35C";
+  const bgColors: Record<string, string> = { chess: "#f0d9b5", xiangqi: "#f5deb3", go: "#d4a574", gomoku: "#DCB35C" };
+  const bg = bgColors[gameType] || "#DCB35C";
+
+  // Parse stones from gomoku/go FEN
+  const stones: { row: number; col: number; color: string }[] = [];
+  if (fen && (gameType === "gomoku" || gameType === "go") && fen.includes(".")) {
+    const parts = fen.split(";")[0];
+    if (parts) {
+      for (const triple of parts.split(",")) {
+        const nums = triple.split(".");
+        if (nums.length === 3) {
+          const r = Math.min(Math.floor(parseInt(nums[0]) * size / 15), size - 1);
+          const c = Math.min(Math.floor(parseInt(nums[1]) * size / 15), size - 1);
+          stones.push({ row: r, col: c, color: nums[2] === "1" ? "#111" : "#FFF" });
+        }
+      }
+    }
+  }
 
   return (
-    <Box sx={{ width: svgSize, height: svgSize, borderRadius: 1, overflow: "hidden" }}>
-      <svg width={svgSize} height={svgSize} style={{ background: gameType === "chess" ? "#f0d9b5" : bg }}>
+    <Box sx={{ width: svgSize, height: svgSize, borderRadius: 1.5, overflow: "hidden", flexShrink: 0 }}>
+      <svg width={svgSize} height={svgSize} style={{ background: bg }}>
         {Array.from({ length: size }, (_, i) => (
           <g key={i}>
-            <line x1={pad} y1={pad + i * cellSize} x2={pad + (size - 1) * cellSize} y2={pad + i * cellSize} stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
-            <line x1={pad + i * cellSize} y1={pad} x2={pad + i * cellSize} y2={pad + (size - 1) * cellSize} stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
+            <line x1={pad} y1={pad + i * cellSize} x2={pad + (size - 1) * cellSize} y2={pad + i * cellSize} stroke="rgba(0,0,0,0.25)" strokeWidth={0.5} />
+            <line x1={pad + i * cellSize} y1={pad} x2={pad + i * cellSize} y2={pad + (size - 1) * cellSize} stroke="rgba(0,0,0,0.25)" strokeWidth={0.5} />
           </g>
         ))}
-        {gameType === "chess" && (
-          <>
-            <rect x={pad} y={pad} width={cellSize} height={cellSize} fill="#b58863" />
-            <rect x={pad + cellSize * 2} y={pad} width={cellSize} height={cellSize} fill="#b58863" />
-            <rect x={pad + cellSize} y={pad + cellSize} width={cellSize} height={cellSize} fill="#b58863" />
-            <rect x={pad + cellSize * 3} y={pad + cellSize} width={cellSize} height={cellSize} fill="#b58863" />
-          </>
-        )}
-        <circle cx={pad + 2 * cellSize} cy={pad + 2 * cellSize} r={4} fill="rgba(0,0,0,0.6)" />
-        <circle cx={pad + 1 * cellSize} cy={pad + 1 * cellSize} r={4} fill="rgba(255,255,255,0.9)" stroke="rgba(0,0,0,0.3)" strokeWidth={0.5} />
+        {gameType === "chess" && Array.from({ length: size * size }, (_, i) => {
+          const r = Math.floor(i / size), c = i % size;
+          return (r + c) % 2 === 1 ? <rect key={i} x={pad + c * cellSize} y={pad + r * cellSize} width={cellSize} height={cellSize} fill="#b58863" opacity={0.4} /> : null;
+        })}
+        {stones.map((s, i) => (
+          <circle key={i} cx={pad + s.col * cellSize} cy={pad + s.row * cellSize} r={cellSize / 2 - 2} fill={s.color} stroke="#333" strokeWidth={0.5} />
+        ))}
+        {stones.length === 0 && <circle cx={svgSize / 2} cy={svgSize / 2} r={5} fill="rgba(0,0,0,0.15)" />}
       </svg>
     </Box>
   );
@@ -72,35 +86,32 @@ function RoomCard({ room, onJoin }: { room: IGameRoom; onJoin: (r: IGameRoom) =>
   return (
     <Card
       onClick={() => onJoin(room)}
-      sx={{ cursor: "pointer", p: 2, transition: "transform 0.15s, box-shadow 0.15s", "&:hover": { transform: "translateY(-2px)", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" } }}
+      sx={{ cursor: "pointer", p: 0, overflow: "hidden", transition: "transform 0.15s, box-shadow 0.15s", "&:hover": { transform: "translateY(-2px)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" } }}
     >
-      <Stack direction="row" spacing={2} alignItems="center">
-        <MiniBoardPreview gameType={room.game_type} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
-            <Typography variant="subtitle2" fontWeight={700}>{GAME_LABELS[room.game_type]}</Typography>
-            <Chip label={timeLabel} size="small" variant="outlined" sx={{ fontSize: "0.7rem", height: 20 }} />
-          </Stack>
-          {/* Players */}
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Avatar sx={{ width: 22, height: 22, fontSize: 10, bgcolor: "#1a1a1a" }}>W</Avatar>
-            <Typography variant="caption" color="text.secondary" noWrap>{room.white_player_id.slice(0, 8)}...</Typography>
-            <Typography variant="caption" color="text.secondary">vs</Typography>
-            {room.black_player_id ? (
-              <>
-                <Avatar sx={{ width: 22, height: 22, fontSize: 10, bgcolor: "#666" }}>B</Avatar>
-                <Typography variant="caption" color="text.secondary" noWrap>{room.black_player_id.slice(0, 8)}...</Typography>
-              </>
-            ) : (
-              <Typography variant="caption" color="text.secondary" fontStyle="italic">Chờ đối thủ...</Typography>
-            )}
-          </Stack>
-        </Box>
-        <Stack alignItems="flex-end" spacing={0.5}>
-          <Chip label={STATUS_LABELS[room.status]} color={isWaiting ? "success" : "primary"} size="small" />
-          {!isWaiting && <Chip icon={<VisibilityIcon />} label="Xem" size="small" variant="outlined" />}
-          {isWaiting && <Button size="small" variant="contained" sx={{ fontSize: "0.7rem", py: 0.25 }}>Tham gia</Button>}
+      {/* Top player (Black / Opponent) */}
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, bgcolor: "rgba(0,0,0,0.02)" }}>
+        <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: "#444" }}>B</Avatar>
+        <Typography variant="caption" fontWeight={500} noWrap sx={{ flex: 1 }}>
+          {room.black_player_id ? room.black_player_id.slice(0, 8) + "..." : "Chờ đối thủ..."}
+        </Typography>
+        <Chip label={STATUS_LABELS[room.status]} color={isWaiting ? "success" : "primary"} size="small" sx={{ height: 20, fontSize: "0.65rem" }} />
+      </Stack>
+
+      {/* Board */}
+      <Stack direction="row" alignItems="center" justifyContent="center" sx={{ px: 2, py: 1.5 }}>
+        <MiniBoardPreview gameType={room.game_type} fen={room.fen} />
+        <Stack sx={{ ml: 2 }} spacing={0.5}>
+          <Typography variant="subtitle2" fontWeight={700}>{GAME_LABELS[room.game_type]}</Typography>
+          <Chip label={timeLabel} size="small" variant="outlined" sx={{ fontSize: "0.7rem", height: 20, width: "fit-content" }} />
+          {isWaiting && <Button size="small" variant="contained" sx={{ fontSize: "0.7rem", py: 0.25, mt: 0.5 }}>Tham gia</Button>}
+          {!isWaiting && <Chip icon={<VisibilityIcon />} label="Xem" size="small" variant="outlined" sx={{ height: 20, fontSize: "0.65rem" }} />}
         </Stack>
+      </Stack>
+
+      {/* Bottom player (White / Creator) */}
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, borderTop: "1px solid #f0f0f0" }}>
+        <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: "#fff", color: "#333", border: "1px solid #ccc" }}>W</Avatar>
+        <Typography variant="caption" fontWeight={500} noWrap>{room.white_player_id.slice(0, 8)}...</Typography>
       </Stack>
     </Card>
   );
