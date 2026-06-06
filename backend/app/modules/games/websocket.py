@@ -21,6 +21,7 @@ ws_router = APIRouter()
 # In-memory state (production: use Redis)
 rooms: dict[str, list[WebSocket]] = defaultdict(list)
 room_states: dict[str, dict[str, Any]] = {}  # room_key -> {fen, turn, game_over, game_type}
+room_ready: dict[str, set] = defaultdict(set)  # room_key -> set of ready websocket ids
 
 
 async def _broadcast(room_key: str, message: dict) -> None:
@@ -90,8 +91,42 @@ async def _init_room(room_key: str, game_type: str) -> dict[str, Any]:
         "turn": state.get("turn", "white"),
         "game_over": False,
         "game_type": game_type,
+        "started": False,
     }
     return {"type": "state", "game_type": game_type, **room_states[room_key]}
+
+
+async def _handle_ready(room_key: str, websocket: WebSocket, room_id: uuid.UUID) -> None:
+    """Player marks ready. When both ready → 5s countdown → start."""
+    ws_id = id(websocket)
+    room_ready[room_key].add(ws_id)
+
+    await _broadcast(room_key, {"type": "ready_status", "ready_count": len(room_ready[room_key]), "needed": 2})
+
+    if len(room_ready[room_key]) >= 2:
+        # Both ready → countdown
+        for i in range(5, 0, -1):
+            await _broadcast(room_key, {"type": "countdown", "seconds": i})
+            await asyncio.sleep(1)
+
+        # Start game
+        state = room_states.get(room_key)
+        if state:
+            state["started"] = True
+
+        # Init game state if not already
+        if not state or not state.get("fen"):
+            game_type = state.get("game_type", "chess") if state else "chess"
+            init_state = await get_initial_state(game_type)
+            room_states[room_key] = {
+                "fen": init_state.get("fen", ""),
+                "turn": init_state.get("turn", "white"),
+                "game_over": False,
+                "game_type": game_type,
+                "started": True,
+            }
+
+        await _broadcast(room_key, {"type": "game_start", "fen": room_states[room_key]["fen"], "turn": room_states[room_key]["turn"]})
 
 
 async def _handle_move(room_key: str, message: dict, websocket: WebSocket, room_id: uuid.UUID) -> None:
@@ -196,8 +231,15 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
                 state_msg = await _init_room(room_key, game_type)
                 await _broadcast(room_key, state_msg)
 
+            elif msg_type == "ready":
+                await _handle_ready(room_key, websocket, room_id)
+
             elif msg_type == "move":
-                await _handle_move(room_key, message, websocket, room_id)
+                state = room_states.get(room_key)
+                if state and not state.get("started"):
+                    await websocket.send_text(json.dumps({"type": "error", "message": "Ván đấu chưa bắt đầu. Hãy nhấn Sẵn sàng."}))
+                else:
+                    await _handle_move(room_key, message, websocket, room_id)
 
             elif msg_type == "pass":
                 await _handle_pass(room_key, websocket, room_id)
@@ -218,8 +260,10 @@ async def game_websocket(websocket: WebSocket, room_id: uuid.UUID):
 
     except WebSocketDisconnect:
         rooms[room_key].remove(websocket)
+        room_ready[room_key].discard(id(websocket))
         if not rooms[room_key]:
             del rooms[room_key]
+            room_ready.pop(room_key, None)
             _cleanup_room(room_key)
             # All players disconnected — abort if still playing
             asyncio.create_task(_abort_abandoned_room(room_id))
