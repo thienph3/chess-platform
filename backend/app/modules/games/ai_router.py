@@ -127,7 +127,7 @@ async def start_ai_game(
     if not player_is_white:
         ai_first_move = await _get_ai_move(fen, request.game_type, request.difficulty)
         if ai_first_move:
-            result = await validate_move(request.game_type, fen, {"from": ai_first_move[:2], "to": ai_first_move[2:4]})
+            result = await validate_move(request.game_type, fen, _parse_ai_move(request.game_type, ai_first_move))
             if result.valid:
                 fen = result.new_fen
                 repo = GameRepository(db)
@@ -168,7 +168,7 @@ async def play_ai_move(
     # Lưu player move
     moves = await repo.get_moves(request.room_id)
     move_num = len(moves) + 1
-    uci = f"{request.move.get('from', '')}{request.move.get('to', '')}"
+    uci = f"{request.move.get('from', '')}{request.move.get('to', '')}" if game_type not in ("gomoku", "go") else f"{request.move.get('row')},{request.move.get('col')}"
     await repo.add_move(MoveHistory(room_id=room.id, move_number=move_num, notation=uci, fen_after=result.new_fen))
     room.fen = result.new_fen
     await db.commit()
@@ -190,7 +190,8 @@ async def play_ai_move(
     ai_fen = result.new_fen
 
     if ai_uci:
-        ai_val = await validate_move(game_type, result.new_fen, {"from": ai_uci[:2], "to": ai_uci[2:4]})
+        ai_move_dict = _parse_ai_move(game_type, ai_uci)
+        ai_val = await validate_move(game_type, result.new_fen, ai_move_dict)
         if ai_val.valid:
             ai_fen = ai_val.new_fen
             await repo.add_move(MoveHistory(room_id=room.id, move_number=move_num + 1, notation=ai_uci, fen_after=ai_fen))
@@ -244,6 +245,15 @@ async def _get_ai_move(fen: str, game_type: str, difficulty: Difficulty) -> str 
     except Exception as exc:
         logger.error("AI move error: %s", exc)
     return None
+
+
+def _parse_ai_move(game_type: str, move_str: str) -> dict:
+    """Parse AI move string into the dict format expected by validate_move."""
+    if game_type in ("gomoku", "go") and "," in move_str:
+        parts = move_str.split(",")
+        return {"row": int(parts[0]), "col": int(parts[1])}
+    # Chess/xiangqi: UCI format "e2e4"
+    return {"from": move_str[:2], "to": move_str[2:4]}
 
 
 def _get_room_difficulty(room: GameRoom) -> Difficulty:
